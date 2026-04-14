@@ -16,7 +16,7 @@ export function parseUrlList(input: string): string[] {
   const seen = new Set<string>();
   const urls: string[] = [];
 
-  for (const raw of input.split(/[\n,]+/u)) {
+  for (const raw of input.split(/[\s,]+/u)) {
     const normalized = normalizeSourceUrl(raw);
     if (!normalized || seen.has(normalized)) {
       continue;

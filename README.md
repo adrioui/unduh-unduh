@@ -1,6 +1,6 @@
-# Clip Harbor
+# Unduh Unduh
 
-Clip Harbor is a Cloudflare-deployable downloader for public Instagram Reels and TikTok videos.
+Unduh Unduh is a Cloudflare-deployable downloader for public Instagram Reels and TikTok videos.
 
 ## Which extractor does it use?
 
@@ -138,8 +138,8 @@ Example:
 
 ```bash
 git clone --depth=1 https://github.com/imputnet/cobalt /tmp/cobalt
-docker build -t clip-harbor-cobalt /tmp/cobalt
-docker run --rm -p 9000:9000 -e API_URL=http://127.0.0.1:9000/ clip-harbor-cobalt
+docker build -t unduh-unduh-cobalt /tmp/cobalt
+docker run --rm -p 9000:9000 -e API_URL=http://127.0.0.1:9000/ unduh-unduh-cobalt
 ```
 
 Then in another shell:

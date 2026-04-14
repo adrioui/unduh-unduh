@@ -2,7 +2,7 @@
 
 ## What this repo is
 
-Clip Harbor is a Cloudflare Worker app for downloading public Instagram and TikTok media.
+Unduh Unduh is a Cloudflare Worker app for downloading public Instagram and TikTok media.
 The Worker validates inputs, asks an extractor for downloadable media URLs, signs short-lived download links, and only proxies the final file when the user actually downloads it.
 
 ## Extraction modes

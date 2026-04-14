@@ -1,0 +1,115 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Base cat shape (always visible) -->
+  <g id="cat-base">
+    <!-- Body -->
+    <ellipse cx="100" cy="145" rx="38" ry="32" fill="#ffffff" stroke="#8b6f77" stroke-width="2.5"/>
+    <!-- Head -->
+    <circle cx="100" cy="95" r="32" fill="#ffffff" stroke="#8b6f77" stroke-width="2.5"/>
+    <!-- Left ear -->
+    <path d="M76 74 L68 48 L90 68 Z" fill="#ffffff" stroke="#8b6f77" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Right ear -->
+    <path d="M124 74 L132 48 L110 68 Z" fill="#ffffff" stroke="#8b6f77" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Inner ear left -->
+    <path d="M78 70 L73 54 L87 66 Z" fill="#f9e1e7" stroke="none"/>
+    <!-- Inner ear right -->
+    <path d="M122 70 L127 54 L113 66 Z" fill="#f9e1e7" stroke="none"/>
+    <!-- Tail -->
+    <path d="M138 145 Q158 130 150 110" fill="none" stroke="#8b6f77" stroke-width="2.5" stroke-linecap="round"/>
+    <!-- Nose -->
+    <ellipse cx="100" cy="100" rx="3.5" ry="2.5" fill="#c2506a"/>
+    <!-- Whiskers left -->
+    <line x1="62" y1="93" x2="82" y2="96" stroke="#8b6f77" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="63" y1="100" x2="82" y2="100" stroke="#8b6f77" stroke-width="1.2" stroke-linecap="round"/>
+    <!-- Whiskers right -->
+    <line x1="138" y1="93" x2="118" y2="96" stroke="#8b6f77" stroke-width="1.2" stroke-linecap="round"/>
+    <line x1="137" y1="100" x2="118" y2="100" stroke="#8b6f77" stroke-width="1.2" stroke-linecap="round"/>
+  </g>
+
+  <!-- State: idle (default - slight smile, relaxed eyes) -->
+  <g id="state-idle">
+    <!-- Eyes - open, relaxed -->
+    <ellipse cx="89" cy="91" rx="3" ry="4" fill="#2d1f23"/>
+    <ellipse cx="111" cy="91" rx="3" ry="4" fill="#2d1f23"/>
+    <!-- Mouth - slight smile -->
+    <path d="M95 105 Q100 110 105 105" fill="none" stroke="#2d1f23" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- Front paws -->
+    <ellipse cx="82" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="118" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <!-- Paw pads -->
+    <ellipse cx="82" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <ellipse cx="118" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+  </g>
+
+  <!-- State: waiting (curious head tilt, wide eyes) -->
+  <g id="state-waiting" style="display: none;">
+    <!-- Eyes - wider, curious -->
+    <ellipse cx="89" cy="90" rx="3.5" ry="5" fill="#2d1f23"/>
+    <ellipse cx="111" cy="90" rx="3.5" ry="5" fill="#2d1f23"/>
+    <!-- Eye highlights -->
+    <circle cx="90.5" cy="88" r="1.2" fill="#ffffff"/>
+    <circle cx="112.5" cy="88" r="1.2" fill="#ffffff"/>
+    <!-- Mouth - slight open -->
+    <ellipse cx="100" cy="107" rx="3" ry="2" fill="#c2506a" stroke="#2d1f23" stroke-width="1"/>
+    <!-- Front paws -->
+    <ellipse cx="82" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="118" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="82" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <ellipse cx="118" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+  </g>
+
+  <!-- State: loading (eyes squeezed, thinking) -->
+  <g id="state-loading" style="display: none;">
+    <!-- Eyes - happy squint lines -->
+    <path d="M85 91 Q89 88 93 91" fill="none" stroke="#2d1f23" stroke-width="2" stroke-linecap="round"/>
+    <path d="M107 91 Q111 88 115 91" fill="none" stroke="#2d1f23" stroke-width="2" stroke-linecap="round"/>
+    <!-- Mouth - small concentrated -->
+    <circle cx="100" cy="106" r="1.5" fill="#2d1f23"/>
+    <!-- Thought dots -->
+    <circle cx="145" cy="60" r="3" fill="#f9e1e7" stroke="#8b6f77" stroke-width="1"/>
+    <circle cx="155" cy="45" r="4" fill="#f9e1e7" stroke="#8b6f77" stroke-width="1"/>
+    <circle cx="163" cy="28" r="5" fill="#f9e1e7" stroke="#8b6f77" stroke-width="1.5"/>
+    <!-- Front paws -->
+    <ellipse cx="82" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="118" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="82" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <ellipse cx="118" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+  </g>
+
+  <!-- State: success (wide smile, hearts) -->
+  <g id="state-success" style="display: none;">
+    <!-- Eyes - happy arc -->
+    <path d="M85 90 Q89 87 93 90" fill="none" stroke="#2d1f23" stroke-width="2" stroke-linecap="round"/>
+    <path d="M107 90 Q111 87 115 90" fill="none" stroke="#2d1f23" stroke-width="2" stroke-linecap="round"/>
+    <!-- Mouth - wide smile -->
+    <path d="M90 104 Q100 115 110 104" fill="none" stroke="#2d1f23" stroke-width="2" stroke-linecap="round"/>
+    <!-- Blush cheeks -->
+    <circle cx="78" cy="99" r="5" fill="#f9e1e7" opacity="0.7"/>
+    <circle cx="122" cy="99" r="5" fill="#f9e1e7" opacity="0.7"/>
+    <!-- Heart above head -->
+    <path d="M140 65 C140 60 148 55 148 62 C148 55 156 60 156 65 C156 75 148 80 148 80 C148 80 140 75 140 65 Z" fill="#c2506a" opacity="0.8"/>
+    <!-- Front paws raised -->
+    <ellipse cx="80" cy="168" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="120" cy="168" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="80" cy="169" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <ellipse cx="120" cy="169" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+  </g>
+
+  <!-- State: error (sad, droopy) -->
+  <g id="state-error" style="display: none;">
+    <!-- Eyes - sad, slightly downcast -->
+    <ellipse cx="89" cy="92" rx="3" ry="4" fill="#2d1f23"/>
+    <ellipse cx="111" cy="92" rx="3" ry="4" fill="#2d1f23"/>
+    <!-- Eyebrows - worried -->
+    <path d="M84 86 Q89 84 93 87" fill="none" stroke="#2d1f23" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M116 86 Q111 84 107 87" fill="none" stroke="#2d1f23" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- Mouth - slight frown -->
+    <path d="M95 108 Q100 104 105 108" fill="none" stroke="#2d1f23" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- Front paws -->
+    <ellipse cx="82" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="118" cy="172" rx="8" ry="5" fill="#ffffff" stroke="#8b6f77" stroke-width="2"/>
+    <ellipse cx="82" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <ellipse cx="118" cy="173" rx="4" ry="2.5" fill="#f9e1e7" stroke="none"/>
+    <!-- Sweat drop -->
+    <path d="M126 78 C126 74 130 72 130 76 C130 72 134 74 134 78 C134 82 130 85 130 85 C130 85 126 82 126 78 Z" fill="#8bc4e8" opacity="0.6"/>
+  </g>
+</svg>

@@ -8,16 +8,60 @@ import {
   type ResolveResult,
 } from "../shared/contracts.ts";
 import { parseUrlList } from "../shared/sources.ts";
+import catSvg from "./cat-mascot.svg?raw";
 import "./styles.css";
 
-const storageKey = "clip-harbor.draft";
+const storageKey = "unduh-unduh.draft";
 const downloadConcurrency = 3;
 
 type DownloadPhase = "idle" | "queued" | "downloading" | "done" | "error";
+type MascotState = "idle" | "loading" | "success" | "error" | "waiting";
 
 interface DownloadState {
   message?: string;
   phase: DownloadPhase;
+}
+
+const mascotMessages: Record<MascotState, string> = {
+  idle: "Ready to download",
+  loading: "Finding your video...",
+  success: "Ready!",
+  error: "Something went wrong",
+  waiting: "Paste a link to get started",
+};
+
+class MascotController {
+  private element: HTMLElement;
+  private currentState: MascotState = "idle";
+
+  constructor(selector: string) {
+    this.element = document.querySelector(selector)!;
+    this.setState("waiting");
+  }
+
+  setState(state: MascotState): void {
+    this.currentState = state;
+    this.element.dataset.state = state;
+
+    // Toggle SVG groups
+    const groups = this.element.querySelectorAll('g[id^="state-"]');
+    groups.forEach((g) => {
+      (g as SVGGElement).style.display = g.id === `state-${state}` ? "block" : "none";
+    });
+
+    // Update aria-label
+    this.element.setAttribute("aria-label", mascotMessages[state]);
+
+    // Update message text
+    const msgEl = document.querySelector<HTMLElement>(".mascot-message");
+    if (msgEl) {
+      msgEl.textContent = mascotMessages[state];
+    }
+  }
+
+  getState(): MascotState {
+    return this.currentState;
+  }
 }
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -27,128 +71,186 @@ if (!app) {
 }
 
 app.innerHTML = `
-  <main class="shell">
-    <div class="masthead">
-      <span class="status-dot" id="health-dot"></span>
-      <strong>Clip Harbor</strong>
+  <main class="stage">
+    <!-- Utility nav -->
+    <nav class="utility-nav">
+      <a href="#how-it-works">How it works</a>
+      <a href="#settings">Settings</a>
+      <a href="#about">About</a>
+    </nav>
+
+    <!-- Cat mascot -->
+    <div class="mascot-wrap">
+      <div class="cat-mascot" id="cat-mascot" data-state="waiting" aria-hidden="true">
+        ${catSvg}
+      </div>
+    </div>
+    <div class="mascot-message" aria-live="polite">${mascotMessages.waiting}</div>
+
+    <!-- Input stage -->
+    <div class="input-stage">
+      <form id="resolve-form">
+        <div class="omnibox">
+          <span class="omnibox-icon" aria-hidden="true">↵</span>
+          <input
+            type="text"
+            id="url-input"
+            placeholder="Paste a link"
+            autocomplete="off"
+            aria-label="Video URL"
+          />
+          <button class="omnibox-clear" id="clear-input" type="button" aria-label="Clear">×</button>
+          <button class="omnibox-submit" id="resolve-button" type="submit">Download</button>
+        </div>
+
+        <!-- Hidden form controls to preserve options serialization -->
+        <select id="video-quality" name="videoQuality" class="hidden"></select>
+        <input id="allow-h265" name="allowH265" type="checkbox" class="hidden" />
+        <input id="tiktok-full-audio" name="tiktokFullAudio" type="checkbox" class="hidden" />
+
+      </form>
     </div>
 
-    <section class="hero">
-      <h1>Download videos</h1>
-      <p class="lede">Paste links to download.</p>
-    </section>
+    <!-- Switcher chips -->
+    <div class="switcher" role="group" aria-label="Download options">
+      <button class="switcher-chip" data-option="quality" value="best" type="button">
+        Best quality
+      </button>
+      <button class="switcher-chip" data-option="audio" value="original" type="button">
+        Original audio
+      </button>
+      <button class="switcher-chip" data-option="speed" value="fast" type="button">
+        Fast mode
+      </button>
+    </div>
 
-    <section class="panel composer">
-      <form id="resolve-form">
-        <div class="panel-header">
-          <div>
-            <h2>Links</h2>
-          </div>
-          <div class="toolbar">
-            <label class="file-picker">
-              <input id="import-file" accept=".txt,.json" type="file" />
-              <span>Import</span>
-            </label>
-            <button class="ghost" id="clear-form" type="button">Clear</button>
-          </div>
-        </div>
+    <!-- Quick actions -->
+    <div class="quick-actions">
+      <button class="paste-button" id="paste-button" type="button">
+        Paste from clipboard
+      </button>
 
-        <label class="stack">
-          <textarea
-            id="url-input"
-            name="urls"
-            placeholder="Paste links"
-            rows="8"
-          ></textarea>
-        </label>
+    </div>
 
-        <details class="options-disclosure">
-          <summary>Options</summary>
-          <div class="options-grid">
-            <label class="stack">
-              <span>Quality</span>
-              <select id="video-quality" name="videoQuality"></select>
-            </label>
-
-            <label class="toggle">
-              <input id="allow-h265" name="allowH265" type="checkbox" />
-              <span>Highest quality</span>
-            </label>
-
-            <label class="toggle">
-              <input id="tiktok-full-audio" name="tiktokFullAudio" type="checkbox" />
-              <span>Original audio</span>
-            </label>
-          </div>
-        </details>
-
-        <div class="actions">
-          <button class="primary" id="resolve-button" type="submit">Download</button>
-        </div>
-      </form>
-    </section>
-
-    <section class="panel results-panel">
-      <div class="panel-header">
-        <div>
-          <h2>Videos</h2>
-        </div>
-        <button class="ghost" id="download-all" type="button">Download all</button>
+    <!-- Inline results -->
+    <div class="results-area" id="results-area">
+      <div class="results-head">
+        <div class="results-summary" id="results-summary"></div>
+        <button class="ghost results-download-all" id="download-all" type="button" hidden>
+          Download all
+        </button>
       </div>
-      <div class="summary" id="results-summary">Paste links above to get started.</div>
-      <div class="results-grid" id="results"></div>
-    </section>
+      <div class="results-list" id="results"></div>
+    </div>
   </main>
+
+  <footer class="stage-footer">
+    <p>Paste links from Instagram or TikTok. No accounts needed.</p>
+  </footer>
 `;
 
+// Initialize mascot
+const mascot = new MascotController("#cat-mascot");
+
+// Get elements
 const form = getRequiredElement<HTMLFormElement>("#resolve-form");
-const urlInput = getRequiredElement<HTMLTextAreaElement>("#url-input");
-const importFileInput = getRequiredElement<HTMLInputElement>("#import-file");
-const clearButton = getRequiredElement<HTMLButtonElement>("#clear-form");
+const urlInput = getRequiredElement<HTMLInputElement>("#url-input");
+const clearInputButton = getRequiredElement<HTMLButtonElement>("#clear-input");
 const resolveButton = getRequiredElement<HTMLButtonElement>("#resolve-button");
+const pasteButton = getRequiredElement<HTMLButtonElement>("#paste-button");
 const downloadAllButton = getRequiredElement<HTMLButtonElement>("#download-all");
-const healthDot = getRequiredElement<HTMLElement>("#health-dot");
+// healthDot removed — status rendered in footer instead
 const resultsRoot = getRequiredElement<HTMLDivElement>("#results");
 const summaryRoot = getRequiredElement<HTMLDivElement>("#results-summary");
 const videoQuality = getRequiredElement<HTMLSelectElement>("#video-quality");
 const allowH265 = getRequiredElement<HTMLInputElement>("#allow-h265");
 const tiktokFullAudio = getRequiredElement<HTMLInputElement>("#tiktok-full-audio");
+const switcherChips = document.querySelectorAll<HTMLButtonElement>(".switcher-chip");
 
 let currentResults: ResolveResult[] = [];
 const downloadStates = new Map<string, DownloadState>();
 
 hydrateSelect(videoQuality, VIDEO_QUALITIES);
 restoreDraft();
-void refreshHealth();
+refreshHealth();
 renderResults([]);
 
-form.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  await resolveBatch();
-});
+// ---- Switcher chip logic ----
+for (const chip of switcherChips) {
+  chip.addEventListener("click", () => {
+    // Deactivate all chips
+    for (const c of switcherChips) {
+      c.classList.remove("active");
+    }
+    chip.classList.add("active");
 
-clearButton.addEventListener("click", () => {
-  form.reset();
+    const option = chip.dataset.option;
+
+    // Map chip selections to form options
+    if (option === "quality") {
+      // Best quality: max resolution, allow H265
+      videoQuality.value = "max";
+      allowH265.checked = true;
+      tiktokFullAudio.checked = false;
+    } else if (option === "audio") {
+      // Original audio: full audio, default quality
+      videoQuality.value = DEFAULT_RESOLVE_OPTIONS.videoQuality;
+      allowH265.checked = false;
+      tiktokFullAudio.checked = true;
+    } else if (option === "speed") {
+      // Fast mode: lower quality, no H265
+      videoQuality.value = "720";
+      allowH265.checked = false;
+      tiktokFullAudio.checked = false;
+    }
+
+    persistDraft();
+  });
+}
+
+// ---- Clear input button visibility ----
+function updateClearButton(): void {
+  if (urlInput.value.length > 0) {
+    clearInputButton.classList.add("visible");
+  } else {
+    clearInputButton.classList.remove("visible");
+  }
+}
+
+urlInput.addEventListener("input", updateClearButton);
+updateClearButton();
+
+clearInputButton.addEventListener("click", () => {
   urlInput.value = "";
-  applyOptions(DEFAULT_RESOLVE_OPTIONS);
-  persistDraft();
+  updateClearButton();
+  urlInput.focus();
   currentResults = [];
   downloadStates.clear();
   renderResults([]);
+  mascot.setState("waiting");
+  persistDraft();
 });
 
-importFileInput.addEventListener("change", async (event) => {
-  const target = event.currentTarget as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file) {
-    return;
+// ---- Paste button ----
+pasteButton.addEventListener("click", async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      urlInput.value = text;
+      updateClearButton();
+      persistDraft();
+      urlInput.focus();
+    }
+  } catch {
+    // Clipboard access denied — fallback: focus the input so user can Ctrl+V
+    urlInput.focus();
   }
+});
 
-  const text = await file.text();
-  const parsed = parseImportedFile(text, file.name);
-  urlInput.value = parsed.join("\n");
-  persistDraft();
-  target.value = "";
+// ---- Event listeners ----
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await resolveBatch();
 });
 
 downloadAllButton.addEventListener("click", async () => {
@@ -160,16 +262,20 @@ for (const field of [urlInput, videoQuality, allowH265, tiktokFullAudio]) {
   field.addEventListener("input", persistDraft);
 }
 
+// ---- Core logic ----
+
 async function resolveBatch(): Promise<void> {
   const urls = parseUrlList(urlInput.value);
   if (!urls.length) {
     summaryRoot.textContent = "Paste at least one link to get started.";
     resultsRoot.replaceChildren();
+    mascot.setState("waiting");
     return;
   }
 
   setBusy(true);
-  summaryRoot.textContent = "Loading…";
+  mascot.setState("loading");
+  summaryRoot.textContent = "Loading...";
 
   try {
     const payload = {
@@ -197,12 +303,14 @@ async function resolveBatch(): Promise<void> {
     downloadStates.clear();
     currentResults = data.results;
     renderResults(currentResults);
+    mascot.setState("success");
   } catch (error) {
     downloadStates.clear();
     currentResults = [];
     resultsRoot.replaceChildren();
     summaryRoot.textContent =
       error instanceof Error ? error.message : "Something went wrong. Please try again.";
+    mascot.setState("error");
   } finally {
     setBusy(false);
   }
@@ -225,8 +333,18 @@ async function refreshHealth(): Promise<void> {
 }
 
 function renderHealth(health: HealthResponseBody): void {
-  healthDot.dataset.state = health.ok ? "ok" : "error";
-  healthDot.title = health.ok ? "" : health.message || "Can't connect";
+  // Update footer subtitle with server status instead of masthead dot
+  const footer = document.querySelector<HTMLElement>(".stage-footer p");
+  if (footer) {
+    const baseText = "Paste links from Instagram or TikTok. No accounts needed.";
+    if (!health.ok) {
+      footer.textContent = `${baseText} (Server unreachable)`;
+      footer.style.color = "var(--danger)";
+    } else {
+      footer.textContent = baseText;
+      footer.style.color = "";
+    }
+  }
 }
 
 function renderResults(results: ResolveResult[]): void {
@@ -234,7 +352,11 @@ function renderResults(results: ResolveResult[]): void {
   updateBulkDownloadButton(results);
 
   if (!results.length) {
-    summaryRoot.textContent = "Paste links above to get started.";
+    summaryRoot.textContent = "";
+
+    if (!urlInput.value.trim()) {
+      summaryRoot.textContent = "";
+    }
     return;
   }
 
@@ -255,51 +377,67 @@ function renderResults(results: ResolveResult[]): void {
   summaryRoot.textContent = `${items} ${items === 1 ? "video" : "videos"} found${progressSuffix ? ` — ${progressSuffix}` : ""}`;
 
   for (const result of results) {
-    resultsRoot.append(createResultCard(result));
+    resultsRoot.append(createResultGroup(result));
   }
 }
 
-function createResultCard(result: ResolveResult): HTMLElement {
-  const article = document.createElement("article");
-  article.className = "result-card";
-  article.dataset.state = result.status;
+function createResultGroup(result: ResolveResult): HTMLElement {
+  const group = document.createElement("div");
+  group.className = "result-group";
+  group.dataset.state = result.status;
 
-  const heading = document.createElement("h3");
+  const heading = document.createElement("div");
+  heading.className = "result-group-title";
   heading.textContent = result.title;
-  article.append(heading);
+
+  group.append(heading);
 
   if (result.message) {
     const message = document.createElement("p");
-    message.className = "message";
+    message.className = "result-group-message";
     message.textContent = result.message;
-    article.append(message);
+    group.append(message);
   }
 
   if (!result.items.length) {
-    return article;
+    return group;
   }
 
-  const list = document.createElement("div");
-  list.className = "item-list";
+  // Add a "Download all" row for multiple items
+  if (result.items.length > 1) {
+    const bulkRow = document.createElement("div");
+    bulkRow.className = "download-row";
+
+    const bulkBtn = document.createElement("button");
+    bulkBtn.className = "ghost";
+    bulkBtn.type = "button";
+    bulkBtn.textContent = `Download all (${result.items.length})`;
+    bulkBtn.addEventListener("click", () => {
+      void queueDownloads(result.items);
+    });
+
+    bulkRow.append(bulkBtn);
+    group.append(bulkRow);
+  }
 
   for (const item of result.items) {
-    list.append(createDownloadCard(item));
+    group.append(createDownloadRow(item));
   }
 
-  article.append(list);
-  return article;
+  return group;
 }
 
-function createDownloadCard(item: DownloadItem): HTMLElement {
-  const card = document.createElement("div");
-  card.className = "download-card";
+function createDownloadRow(item: DownloadItem): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "download-row";
   const state = getDownloadState(item.id);
 
-  const label = document.createElement("strong");
+  const label = document.createElement("span");
+  label.className = "download-row-label";
   label.textContent = item.label;
 
   const actions = document.createElement("div");
-  actions.className = "download-actions";
+  actions.className = "download-row-actions";
 
   const statePill = document.createElement("span");
   statePill.className = "state-pill";
@@ -308,7 +446,7 @@ function createDownloadCard(item: DownloadItem): HTMLElement {
   actions.append(statePill);
 
   const button = document.createElement("button");
-  button.className = "primary small";
+  button.className = "primary";
   button.type = "button";
   button.textContent = downloadButtonLabel(state.phase);
   button.disabled = state.phase === "queued" || state.phase === "downloading";
@@ -317,8 +455,8 @@ function createDownloadCard(item: DownloadItem): HTMLElement {
   });
 
   actions.append(button);
-  card.append(label, actions);
-  return card;
+  row.append(label, actions);
+  return row;
 }
 
 function triggerDownload(item: DownloadItem, blob: Blob): void {
@@ -349,6 +487,26 @@ function applyOptions(options: ResolveOptions): void {
   allowH265.checked = options.allowH265;
   tiktokFullAudio.checked = options.tiktokFullAudio;
   videoQuality.value = options.videoQuality;
+
+  // Sync switcher chip active state based on options
+  syncSwitcherChip(options);
+}
+
+function syncSwitcherChip(options: ResolveOptions): void {
+  // Determine which chip should be active (if options match a preset)
+  let activeOption: "quality" | "audio" | "speed" | null = null;
+
+  if (options.tiktokFullAudio) {
+    activeOption = "audio";
+  } else if (options.videoQuality === "max" && options.allowH265) {
+    activeOption = "quality";
+  } else if (!options.allowH265 && options.videoQuality === "720") {
+    activeOption = "speed";
+  }
+
+  for (const chip of switcherChips) {
+    chip.classList.toggle("active", activeOption !== null && chip.dataset.option === activeOption);
+  }
 }
 
 function persistDraft(): void {
@@ -378,6 +536,7 @@ function restoreDraft(): void {
       ...parsed.options,
     });
     urlInput.value = parsed.urls ?? "";
+    updateClearButton();
   } catch {
     localStorage.removeItem(storageKey);
   }
@@ -392,32 +551,9 @@ function hydrateSelect(select: HTMLSelectElement, values: readonly string[]): vo
   }
 }
 
-function parseImportedFile(contents: string, filename: string): string[] {
-  if (filename.endsWith(".json")) {
-    const parsed = JSON.parse(contents) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.filter((entry): entry is string => typeof entry === "string");
-    }
-
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      Array.isArray((parsed as { urls?: unknown }).urls)
-    ) {
-      return (parsed as { urls: unknown[] }).urls.filter(
-        (entry): entry is string => typeof entry === "string",
-      );
-    }
-
-    throw new Error("JSON imports must be an array of URLs or an object with a urls array.");
-  }
-
-  return parseUrlList(contents);
-}
-
 function setBusy(isBusy: boolean): void {
   resolveButton.disabled = isBusy;
-  resolveButton.textContent = isBusy ? "Loading…" : "Download";
+  resolveButton.textContent = isBusy ? "Loading..." : "Download";
 }
 
 function updateBulkDownloadButton(results: ResolveResult[]): void {
@@ -428,14 +564,17 @@ function updateBulkDownloadButton(results: ResolveResult[]): void {
   }).length;
 
   if (!items.length) {
+    downloadAllButton.hidden = true;
     downloadAllButton.disabled = true;
     downloadAllButton.textContent = "Download all";
     return;
   }
 
+  downloadAllButton.hidden = false;
+
   if (active > 0) {
     downloadAllButton.disabled = true;
-    downloadAllButton.textContent = "Downloading…";
+    downloadAllButton.textContent = "Downloading...";
     return;
   }
 
@@ -539,9 +678,9 @@ function downloadPhaseLabel(phase: DownloadPhase): string {
 function downloadButtonLabel(phase: DownloadPhase): string {
   switch (phase) {
     case "queued":
-      return "Waiting…";
+      return "Waiting...";
     case "downloading":
-      return "Downloading…";
+      return "Downloading...";
     case "done":
       return "Download";
     case "error":

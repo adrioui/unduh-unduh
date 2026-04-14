@@ -16,6 +16,13 @@ test("parseUrlList deduplicates entries", () => {
   );
 });
 
+test("parseUrlList accepts whitespace-separated entries", () => {
+  assert.deepEqual(
+    parseUrlList("https://www.tiktok.com/@demo/video/1 https://www.instagram.com/reel/ABC123"),
+    ["https://www.tiktok.com/@demo/video/1", "https://www.instagram.com/reel/ABC123"],
+  );
+});
+
 test("inferPlatform recognizes supported hosts", () => {
   assert.equal(inferPlatform("https://www.instagram.com/reel/ABC123"), "instagram");
   assert.equal(inferPlatform("https://www.tiktok.com/@demo/video/123"), "tiktok");
