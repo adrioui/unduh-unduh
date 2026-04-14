@@ -140,8 +140,7 @@ button {
 
 .omnibox {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
   background: var(--surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
@@ -152,9 +151,43 @@ button {
     box-shadow 200ms ease;
 }
 
-.omnibox:focus-within {
+.omnibox:focus-within,
+.omnibox.focused {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(194, 80, 106, 0.2);
+}
+
+.omnibox.expanded {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.02),
+    0 4px 12px rgba(194, 80, 106, 0.08);
+}
+
+.omnibox-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.omnibox-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-height 250ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease,
+    margin-top 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.omnibox.expanded .omnibox-bottom {
+  max-height: 60px;
+  opacity: 1;
+  margin-top: 0.5rem;
 }
 
 .omnibox-icon {
@@ -162,20 +195,25 @@ button {
   font-size: 0.875rem;
   flex-shrink: 0;
   user-select: none;
+  padding-top: 0.625rem;
 }
 
-.omnibox input[type="text"] {
+.omnibox textarea {
   flex: 1;
   border: none;
   outline: none;
   background: transparent;
   color: var(--ink);
   font-size: 0.9375rem;
-  padding: 0.25rem 0;
+  padding: 0.5rem 0;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: hidden;
   min-height: 44px;
+  transition: height 200ms ease;
 }
 
-.omnibox input[type="text"]::placeholder {
+.omnibox textarea::placeholder {
   color: var(--ink-muted);
 }
 
@@ -184,7 +222,7 @@ button {
   border: none;
   color: var(--ink-muted);
   font-size: 1.125rem;
-  padding: 0.25rem 0.375rem;
+  padding: 0.5rem 0.375rem;
   border-radius: 4px;
   line-height: 1;
   display: none;
@@ -197,6 +235,16 @@ button {
 
 .omnibox-clear:hover {
   color: var(--ink);
+}
+
+.link-count {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--accent-soft);
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  margin-right: auto;
 }
 
 .omnibox-submit {
@@ -446,12 +494,6 @@ button {
   display: none;
 }
 
-/* ==================== Import file (hidden in new layout) ==================== */
-
-.file-picker {
-  display: none;
-}
-
 /* ==================== Responsive ==================== */
 
 @media (max-width: 800px) {
@@ -459,12 +501,12 @@ button {
     width: min(100vw - 1rem, 100%);
   }
 
-  .omnibox {
-    flex-wrap: wrap;
+  .omnibox-top {
+    align-items: center;
   }
 
-  .omnibox-submit {
-    width: 100%;
+  .omnibox textarea {
+    min-height: 38px;
   }
 
   .switcher {

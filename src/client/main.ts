@@ -90,17 +90,22 @@ app.innerHTML = `
     <!-- Input stage -->
     <div class="input-stage">
       <form id="resolve-form">
-        <div class="omnibox">
-          <span class="omnibox-icon" aria-hidden="true">↵</span>
-          <input
-            type="text"
-            id="url-input"
-            placeholder="Paste a link"
-            autocomplete="off"
-            aria-label="Video URL"
-          />
-          <button class="omnibox-clear" id="clear-input" type="button" aria-label="Clear">×</button>
-          <button class="omnibox-submit" id="resolve-button" type="submit">Download</button>
+        <div class="omnibox" id="omnibox">
+          <div class="omnibox-top">
+            <span class="omnibox-icon" aria-hidden="true">🔗</span>
+            <textarea
+              id="url-input"
+              placeholder="Paste links here..."
+              autocomplete="off"
+              aria-label="Video URLs"
+              rows="2"
+            ></textarea>
+            <button class="omnibox-clear" id="clear-input" type="button" aria-label="Clear">×</button>
+          </div>
+          <div class="omnibox-bottom">
+            <span class="link-count" id="link-count" hidden></span>
+            <button class="omnibox-submit" id="resolve-button" type="submit">Download</button>
+          </div>
         </div>
 
         <!-- Hidden form controls to preserve options serialization -->
@@ -154,7 +159,7 @@ const mascot = new MascotController("#cat-mascot");
 
 // Get elements
 const form = getRequiredElement<HTMLFormElement>("#resolve-form");
-const urlInput = getRequiredElement<HTMLInputElement>("#url-input");
+const urlInput = getRequiredElement<HTMLTextAreaElement>("#url-input");
 const clearInputButton = getRequiredElement<HTMLButtonElement>("#clear-input");
 const resolveButton = getRequiredElement<HTMLButtonElement>("#resolve-button");
 const pasteButton = getRequiredElement<HTMLButtonElement>("#paste-button");
@@ -208,21 +213,79 @@ for (const chip of switcherChips) {
   });
 }
 
-// ---- Clear input button visibility ----
-function updateClearButton(): void {
-  if (urlInput.value.length > 0) {
+const omniboxEl = getRequiredElement<HTMLDivElement>("#omnibox");
+const linkCountEl = getRequiredElement<HTMLSpanElement>("#link-count");
+
+// ---- Omnibox expand/collapse logic ----
+function countLinks(text: string): number {
+  return parseUrlList(text).length;
+}
+
+function updateOmniboxState(): void {
+  const hasContent = urlInput.value.trim().length > 0;
+  const linkCount = countLinks(urlInput.value);
+
+  // Expand when focused or when there are multiple links
+  if (hasContent || linkCount > 1) {
+    omniboxEl.classList.add("expanded");
+  } else {
+    omniboxEl.classList.remove("expanded");
+  }
+
+  // Show/hide clear button
+  if (hasContent) {
     clearInputButton.classList.add("visible");
   } else {
     clearInputButton.classList.remove("visible");
   }
+
+  // Show link count badge
+  if (linkCount > 1) {
+    linkCountEl.hidden = false;
+    linkCountEl.textContent = `${linkCount} links`;
+  } else {
+    linkCountEl.hidden = true;
+    linkCountEl.textContent = "";
+  }
+
+  // Auto-grow textarea to fit content
+  autoGrowTextarea();
 }
 
-urlInput.addEventListener("input", updateClearButton);
-updateClearButton();
+function autoGrowTextarea(): void {
+  // Reset height to recalculate
+  urlInput.style.height = "auto";
+  const lineHeight = parseInt(getComputedStyle(urlInput).lineHeight, 10) || 22;
+  const maxRows = 8;
+  const maxHeight = lineHeight * maxRows;
+  const scrollHeight = urlInput.scrollHeight;
+  urlInput.style.height = `${Math.min(scrollHeight, maxHeight)}px`;
+  urlInput.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+}
+
+urlInput.addEventListener("focus", () => {
+  omniboxEl.classList.add("focused");
+  updateOmniboxState();
+});
+
+urlInput.addEventListener("blur", () => {
+  omniboxEl.classList.remove("focused");
+  updateOmniboxState();
+});
+
+urlInput.addEventListener("input", updateOmniboxState);
+
+// Auto-expand on paste with multiple URLs
+urlInput.addEventListener("paste", () => {
+  // Use setTimeout so the pasted content is in the textarea
+  setTimeout(updateOmniboxState, 0);
+});
+
+updateOmniboxState();
 
 clearInputButton.addEventListener("click", () => {
   urlInput.value = "";
-  updateClearButton();
+  updateOmniboxState();
   urlInput.focus();
   currentResults = [];
   downloadStates.clear();
@@ -237,7 +300,7 @@ pasteButton.addEventListener("click", async () => {
     const text = await navigator.clipboard.readText();
     if (text) {
       urlInput.value = text;
-      updateClearButton();
+      updateOmniboxState();
       persistDraft();
       urlInput.focus();
     }
@@ -536,7 +599,7 @@ function restoreDraft(): void {
       ...parsed.options,
     });
     urlInput.value = parsed.urls ?? "";
-    updateClearButton();
+    updateOmniboxState();
   } catch {
     localStorage.removeItem(storageKey);
   }
