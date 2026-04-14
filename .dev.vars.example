@@ -1,0 +1,9 @@
+COBALT_API_URL=http://127.0.0.1:9000/
+DOWNLOAD_TOKEN_SECRET=replace-with-a-long-random-string
+# Optional: use one of these if your Cobalt instance is protected.
+# COBALT_API_KEY=
+# COBALT_BEARER_TOKEN=
+# COBALT_TIMEOUT_MS=20000
+# MAX_BATCH_SIZE=25
+# MAX_UPSTREAM_CONCURRENCY=3
+

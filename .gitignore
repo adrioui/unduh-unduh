@@ -1,0 +1,10 @@
+node_modules
+dist
+.wrangler
+.vite
+coverage
+.DS_Store
+.env
+.dev.vars
+.runtime
+.omx

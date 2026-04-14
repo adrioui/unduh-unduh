@@ -1,0 +1,17 @@
+name = "clip-harbor"
+main = "src/worker/index.ts"
+compatibility_date = "2026-04-14"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[observability.logs]
+enabled = true
+
+[vars]
+COBALT_TIMEOUT_MS = "20000"
+MAX_BATCH_SIZE = "25"
+MAX_UPSTREAM_CONCURRENCY = "3"

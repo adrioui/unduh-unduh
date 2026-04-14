@@ -1,0 +1,413 @@
+:root {
+  /* Blush page — clearly pink at a glance */
+  --paper: #fdf2f4;
+  --paper-strong: #fff5f7;
+  --ink: #1a1a1a;
+  --ink-muted: #6e5c60;
+
+  /* Pink accent — dusty rose family, stronger */
+  --accent: #c2506a;
+  --accent-strong: #a33a54;
+  --accent-soft: #f9e1e7;
+
+  /* Pink-tinted surfaces */
+  --panel: #f9e4e9;
+  --line: #eac5ce;
+
+  /* Functional states stay neutral/readable */
+  --success: #1a1a1a;
+  --danger: #9b2c3e;
+
+  color: var(--ink);
+  font-family:
+    "SF Pro Text",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--paper);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.shell {
+  width: min(640px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 2.5rem 0 4rem;
+}
+
+/* Masthead */
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+}
+
+.masthead strong {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+
+.status-dot[data-state="ok"] {
+  background: var(--success);
+}
+
+.status-dot[data-state="error"] {
+  background: var(--danger);
+}
+
+/* Hero */
+.hero {
+  padding: 2.5rem 0 1.5rem;
+}
+
+h1,
+h2,
+h3 {
+  font-family: inherit;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+h2 {
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+h3 {
+  font-weight: 500;
+}
+
+.lede {
+  color: var(--ink-muted);
+  font-size: 1rem;
+  line-height: 1.65;
+  max-width: 50ch;
+  margin: 0.5rem 0 0;
+}
+
+/* Panels */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.composer,
+.results-panel {
+  margin-top: 1.5rem;
+}
+
+.results-panel .summary,
+.results-panel .message {
+  color: var(--ink-muted);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.toolbar,
+.actions,
+.download-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Options disclosure */
+.options-disclosure {
+  margin-top: 0.875rem;
+}
+
+.options-disclosure summary {
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.25rem 0;
+}
+
+.options-disclosure summary:hover {
+  color: var(--ink);
+}
+
+.options-disclosure[open] summary {
+  margin-bottom: 0.5rem;
+}
+
+/* State pills — flat text */
+.state-pill {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.state-pill[data-phase="queued"],
+.state-pill[data-phase="downloading"] {
+  color: var(--accent-strong);
+}
+
+.state-pill[data-phase="done"] {
+  color: var(--ink);
+}
+
+.state-pill[data-phase="error"] {
+  color: var(--danger);
+}
+
+.stack {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.stack > span {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+textarea,
+select {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--paper-strong);
+  color: var(--ink);
+  padding: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+textarea {
+  min-height: 10rem;
+  resize: vertical;
+}
+
+.options-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.toggle {
+  border-radius: 0.5rem;
+  background: var(--paper-strong);
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  display: flex;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.toggle input {
+  margin-top: 0.125rem;
+  accent-color: var(--accent);
+}
+
+.actions {
+  justify-content: space-between;
+  margin-top: 1rem;
+}
+
+.primary,
+.ghost,
+.file-picker span {
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  transition: background-color 300ms ease;
+}
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.ghost,
+.file-picker span {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+.ghost:hover:not(:disabled),
+.file-picker span:hover {
+  background: var(--line);
+}
+
+.small {
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+}
+
+.small-link {
+  border-radius: 0.375rem;
+  color: var(--ink-muted);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.small-link:hover {
+  color: var(--ink);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.file-picker input {
+  display: none;
+}
+
+.summary {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}
+
+.results-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+/* Result cards */
+.result-card {
+  background: var(--paper-strong);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.875rem;
+}
+
+.result-card[data-state="error"] {
+  background: rgba(180, 50, 70, 0.06);
+  border-color: var(--danger);
+}
+
+.result-title p,
+.message {
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.8125rem;
+  word-break: break-word;
+}
+
+.badge {
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.item-list {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.download-card {
+  border-radius: 0.375rem;
+  background: var(--accent-soft);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.625rem 0.75rem;
+}
+
+.download-card strong {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.download-card .primary {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 800px) {
+  .shell {
+    width: min(100vw - 1rem, 100%);
+  }
+
+  .masthead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .panel-header,
+  .actions,
+  .download-card,
+  .result-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .options-grid {
+    grid-template-columns: 1fr;
+  }
+}
