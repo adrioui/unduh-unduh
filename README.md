@@ -1,19 +1,66 @@
 # Clip Harbor
 
-Clip Harbor is a Cloudflare-deployable bulk downloader for public Instagram Reels and TikTok videos. The app is written in TypeScript, ships a Worker API plus a static front end, and deliberately reuses the existing Cobalt extraction API instead of embedding a fragile scraper in the repo.
+Clip Harbor is a Cloudflare-deployable downloader for public Instagram Reels and TikTok videos.
 
-## Why this shape
+## Which extractor does it use?
 
-- Cloudflare Workers do not provide functional `child_process` support, so a `yt-dlp`-style subprocess cannot run inside the Worker runtime.
-- Cobalt already exposes an API for Instagram posts/reels and TikTok, and its own docs recommend running your own instance instead of consuming the public hosted API from other projects.
-- This repo keeps the Cloudflare side clean: the Worker validates input, fans out batch requests, signs download links, and proxies the final file stream only when the user actually downloads something.
+**Both, but not in the same place:**
+
+- **Hosted / normal mode:** the Worker talks to a **Cobalt-compatible HTTP API**.
+- **Free local fallback:** the Worker talks to the repo's **local bridge**, and that bridge uses the machine's installed **`yt-dlp`**.
+
+The Worker itself never runs `yt-dlp`.
+
+## Architecture
+
+### Hosted mode
+
+```text
+Browser -> Cloudflare Worker -> Cobalt API -> media URL
+                             -> signed /api/download -> proxied file stream
+```
+
+Use this when you already run Cobalt somewhere reachable by the Worker.
+
+### Local fallback mode
+
+```text
+Browser -> Cloudflare Worker -> Quick Tunnel -> local bridge -> yt-dlp
+                             -> signed /api/download -> proxied file stream
+```
+
+Use this when you do not want to pay for a separate hosted Cobalt instance.
+
+## Why it is shaped this way
+
+- Cloudflare Workers do not support `child_process`, so `yt-dlp` cannot run inside Worker code.
+- Cobalt already exposes an extractor over HTTP, which fits the Worker runtime well.
+- The local fallback keeps the same HTTP contract by exposing a small Cobalt-compatible bridge backed by `yt-dlp`.
+- Download links are signed so the Worker does not become an open proxy.
 
 ## Stack
 
-- `vite-plus` for build/check workflow
-- `pnpm` for package management
+- TypeScript
 - Cloudflare Workers + static assets
-- A separately hosted Cobalt API instance
+- `vite-plus`
+- `pnpm`
+- Cobalt-compatible upstream API
+- Optional local `yt-dlp` bridge for the free fallback path
+
+## Repo layout
+
+- `src/client/` — browser UI
+- `src/worker/` — Worker API, extractor client, token handling
+- `src/shared/` — shared contracts and helpers
+- `scripts/local-origin-server.ts` — local Cobalt-compatible bridge backed by `yt-dlp`
+- `scripts/*.sh` — local bridge lifecycle and publish helpers
+- `tests/` — Worker tests and smoke harness support
+
+## Install
+
+```bash
+pnpm install
+```
 
 ## Environment
 
@@ -36,36 +83,58 @@ Optional values:
 - `MAX_BATCH_SIZE`
 - `MAX_UPSTREAM_CONCURRENCY`
 
-## Install
-
-```bash
-pnpm install
-```
+`COBALT_API_URL` always means “the extractor upstream the Worker should call.”
+In normal deployments that is Cobalt. In local fallback mode, `local:publish` temporarily points it at the repo's local bridge.
 
 ## Commands
 
 ```bash
-pnpm check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
-pnpm dev
-pnpm smoke
-pnpm origin:start
-pnpm origin:publish
-pnpm origin:status
-pnpm origin:stop
+pnpm run check
+pnpm run lint
+pnpm run typecheck
+pnpm run test
+pnpm run build
+pnpm run dev
+pnpm run smoke
+pnpm run verify
+```
+
+Preferred local fallback commands:
+
+```bash
+pnpm run local:start
+pnpm run local:status
+pnpm run local:stop
+pnpm run local:publish
+```
+
+Legacy aliases still work:
+
+```bash
+pnpm run origin:start
+pnpm run origin:status
+pnpm run origin:stop
+pnpm run origin:publish
 ```
 
 ## Local smoke flow
 
-The app expects a Cobalt API. For local integration testing, bring up your own instance first. Cobalt documents Docker-based self-hosting and local Node execution in its repo:
+### Mock smoke flow
 
-- Cobalt run guide: <https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md>
-- Cobalt API docs: <https://github.com/imputnet/cobalt/blob/main/docs/api.md>
+```bash
+pnpm run smoke
+```
 
-Example local sequence:
+This uses the repo's mock extractor harness.
+
+### Real smoke flow against Cobalt
+
+Bring up your own Cobalt instance first. Cobalt docs:
+
+- Run guide: <https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md>
+- API docs: <https://github.com/imputnet/cobalt/blob/main/docs/api.md>
+
+Example:
 
 ```bash
 git clone --depth=1 https://github.com/imputnet/cobalt /tmp/cobalt
@@ -77,51 +146,49 @@ Then in another shell:
 
 ```bash
 cp .dev.vars.example .dev.vars
-pnpm smoke -- --real
+COBALT_API_URL=http://127.0.0.1:9000/ \
+SMOKE_TIKTOK_URL='https://www.tiktok.com/@example/video/123' \
+SMOKE_INSTAGRAM_URL='https://www.instagram.com/reel/example/' \
+pnpm run smoke -- --real
 ```
 
-For real smoke mode, set these environment variables first:
+## Free local fallback with yt-dlp
 
-- `COBALT_API_URL`
-- `SMOKE_TIKTOK_URL`
-- `SMOKE_INSTAGRAM_URL`
+If you do not want to host Cobalt, you can use this machine as the extractor.
 
-Without `--real`, `pnpm smoke` runs against the repo’s mock Cobalt harness.
+```bash
+pnpm run local:publish
+```
+
+That command:
+
+- starts the local bridge on `127.0.0.1:9010`
+- uses the machine's installed `yt-dlp` for extraction
+- generates a private API key for the bridge
+- starts a Cloudflare Quick Tunnel
+- updates Worker secrets to point at the tunnel
+- deploys the Worker
+
+Important limitations:
+
+- the machine must stay online
+- Quick Tunnel URLs are temporary
+- if the bridge or tunnel restarts, run `pnpm run local:publish` again
+
+Runtime state and generated local secrets live under `.runtime/local-origin/` and are ignored by git.
 
 ## Deploy to Cloudflare
 
 ```bash
-pnpm build
-pnpm deploy
+pnpm run build
+pnpm run deploy
 ```
 
-This deploys the Worker and the static assets bundle. The extraction API remains external by design; point `COBALT_API_URL` at your own Cobalt deployment. If you want the extractor itself on Cloudflare, run Cobalt in a separate container-compatible lane and use its public URL here.
-
-## Free Local-Origin Mode
-
-If you do not want to pay for a remote Cobalt host, this repo can use the current machine as the origin:
-
-1. `pnpm origin:publish`
-2. keep this machine running
-3. if the machine or tunnel restarts, run `pnpm origin:publish` again
-
-What that command does:
-
-- starts a local TypeScript origin service on `127.0.0.1:9010`
-- uses the machine's installed `yt-dlp` for real Instagram/TikTok extraction
-- generates a private API key for the local origin
-- starts a Cloudflare Quick Tunnel from this machine
-- updates Worker secrets to point at the current tunnel URL
-- deploys the Worker to Cloudflare
-
-Important limitation:
-
-- Quick Tunnel URLs are temporary and change whenever the tunnel restarts. This is the free fallback. For a stable hostname, you need a Cloudflare-managed domain and a named tunnel.
-
-Runtime state and generated secrets are stored under `.runtime/local-origin/` and ignored by git.
+This deploys the Worker and the static assets bundle.
+The extractor stays external by design.
 
 ## Notes
 
 - Only public TikTok and Instagram content is supported.
-- Download links are short-lived and HMAC-signed to avoid exposing an open proxy endpoint.
-- If the upstream extractor asks for local post-processing, the Worker rejects the item instead of pretending it can process media inside the edge runtime.
+- The Worker rejects upstream responses that require local post-processing.
+- Run `pnpm run verify` before pushing changes.

@@ -28,7 +28,7 @@ main() {
   bash "${ROOT_DIR}/scripts/start-local-origin.sh"
 
   if [[ ! -s "${TUNNEL_URL_FILE}" || ! -s "${API_KEY_FILE}" ]]; then
-    printf 'origin state is incomplete; expected tunnel URL and API key files\n' >&2
+    printf 'local service state is incomplete; expected tunnel URL and API key files\n' >&2
     exit 1
   fi
 
@@ -45,7 +45,7 @@ main() {
   put_secret "COBALT_API_KEY" "${api_key}"
   put_secret "DOWNLOAD_TOKEN_SECRET" "${download_secret}"
 
-  log "deploying worker with local origin tunnel"
+  log "deploying worker with local yt-dlp tunnel"
   npx wrangler deploy
 }
 

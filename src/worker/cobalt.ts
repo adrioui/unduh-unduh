@@ -1,3 +1,6 @@
+// Client for the configured Cobalt-compatible extraction upstream.
+// In normal deployments that upstream is Cobalt itself.
+// In free local mode, `scripts/local-origin-server.ts` provides a small bridge backed by yt-dlp.
 import type {
   DownloadItem,
   ResolveOptions,

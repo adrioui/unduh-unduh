@@ -6,15 +6,17 @@ STATE_DIR="${ROOT_DIR}/.runtime/local-origin"
 LOCAL_PORT="${COBALT_LOCAL_PORT:-9010}"
 API_KEY_FILE="${STATE_DIR}/api-key.txt"
 TUNNEL_URL_FILE="${STATE_DIR}/tunnel-url.txt"
-STATE_FILE="${STATE_DIR}/origin.json"
-PID_FILE="${STATE_DIR}/origin.pid"
-LOG_FILE="${STATE_DIR}/origin.log"
+STATE_FILE="${STATE_DIR}/state.json"
+LEGACY_STATE_FILE="${STATE_DIR}/origin.json"
+PID_FILE="${STATE_DIR}/server.pid"
+LEGACY_PID_FILE="${STATE_DIR}/origin.pid"
+LOG_FILE="${STATE_DIR}/server.log"
 TUNNEL_CONTAINER="${TUNNEL_CONTAINER:-clip-harbor-cloudflared}"
 
 mkdir -p "${STATE_DIR}"
 
 log() {
-  printf '[origin] %s\n' "$*"
+  printf '[local] %s\n' "$*"
 }
 
 require_command() {
@@ -38,25 +40,28 @@ ensure_api_key() {
   export API_KEY
 }
 
-stop_origin_process() {
-  if [[ -f "${PID_FILE}" ]]; then
-    local pid
-    pid="$(cat "${PID_FILE}")"
-    if kill -0 "${pid}" >/dev/null 2>&1; then
-      kill "${pid}" >/dev/null 2>&1 || true
-      wait "${pid}" 2>/dev/null || true
+stop_local_process() {
+  for current_pid_file in "${PID_FILE}" "${LEGACY_PID_FILE}"; do
+    if [[ -f "${current_pid_file}" ]]; then
+      local pid
+      pid="$(cat "${current_pid_file}")"
+      if kill -0 "${pid}" >/dev/null 2>&1; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        wait "${pid}" 2>/dev/null || true
+      fi
     fi
-    rm -f "${PID_FILE}"
-  fi
+  done
+
+  rm -f "${PID_FILE}" "${LEGACY_PID_FILE}"
 }
 
-start_origin_process() {
+start_local_process() {
   local public_api_url="$1"
 
-  stop_origin_process
+  stop_local_process
   : >"${LOG_FILE}"
 
-  log "starting local yt-dlp origin on 127.0.0.1:${LOCAL_PORT}"
+  log "starting local yt-dlp bridge on 127.0.0.1:${LOCAL_PORT}"
   setsid env \
     LOCAL_ORIGIN_API_KEY="${API_KEY}" \
     LOCAL_ORIGIN_PORT="${LOCAL_PORT}" \
@@ -75,7 +80,7 @@ start_origin_process() {
   done
 
   cat "${LOG_FILE}" >&2 || true
-  printf 'local origin did not become ready on port %s\n' "${LOCAL_PORT}" >&2
+  log "local yt-dlp bridge did not become ready on port ${LOCAL_PORT}" >&2
   exit 1
 }
 
@@ -137,8 +142,9 @@ const pid = fs.readFileSync(pidFile, "utf8").trim();
 const state = {
   apiKey,
   logFile,
-  originPid: Number(pid),
+  localPid: Number(pid),
   localPort: Number(localPort),
+  mode: "yt-dlp-bridge",
   tunnelContainer,
   tunnelUrl,
   updatedAt: new Date().toISOString(),
@@ -154,14 +160,15 @@ main() {
   require_command node
   require_command yt-dlp
 
-  docker rm -f clip-harbor-cobalt-origin clip-harbor-cobalt-real >/dev/null 2>&1 || true
   ensure_api_key
-  start_origin_process "http://127.0.0.1:${LOCAL_PORT}/"
+  start_local_process "http://127.0.0.1:${LOCAL_PORT}/"
   start_tunnel
-  start_origin_process "${TUNNEL_URL}"
+  start_local_process "${TUNNEL_URL}"
   write_state_file
 
-  log "local yt-dlp origin is ready"
+  rm -f "${LEGACY_STATE_FILE}"
+
+  log "local yt-dlp bridge is ready"
   log "quick tunnel: ${TUNNEL_URL}"
   log "api key saved to ${API_KEY_FILE}"
   log "state file: ${STATE_FILE}"

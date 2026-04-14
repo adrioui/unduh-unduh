@@ -4,6 +4,9 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { promisify } from "node:util";
 
+// This local bridge exposes the small subset of the Cobalt HTTP API that the Worker needs.
+// The Worker still talks to an HTTP extractor; only this local process shells out to yt-dlp.
+
 const execFileAsync = promisify(execFile);
 
 const port = Number(process.env.LOCAL_ORIGIN_PORT ?? "9010");
@@ -28,6 +31,7 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && url.pathname === "/") {
       writeJson(response, 200, {
+        // Keep the Cobalt-shaped payload so the Worker can treat this bridge like any other upstream.
         cobalt: {
           services,
           startTime: String(startedAt),
@@ -35,7 +39,7 @@ const server = createServer(async (request, response) => {
           version: await ytDlpVersion(),
         },
         git: {
-          branch: "local-origin",
+          branch: "local-ytdlp",
           commit: "yt-dlp",
           remote: "local-machine",
         },
@@ -112,7 +116,7 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     writeJson(response, 500, {
       error: {
-        code: "error.origin.unhandled",
+        code: "error.local.unhandled",
         message: error instanceof Error ? error.message : "Unknown failure",
       },
       status: "error",
@@ -240,7 +244,7 @@ async function streamDownload(response: ServerResponse, cached: CachedDownload):
       if (!started && code !== 0) {
         writeJson(response, 502, {
           error: {
-            code: "error.origin.fetch.failed",
+            code: "error.local.fetch.failed",
             message: Buffer.concat(stderrChunks).toString("utf8").slice(0, 400),
           },
           status: "error",
