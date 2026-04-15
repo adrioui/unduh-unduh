@@ -1,5 +1,4 @@
 // Client for the configured yt-dlp extraction upstream.
-// In normal deployments that upstream is Cobalt itself.
 // In free local mode, `scripts/local-origin-server.ts` provides a small bridge backed by yt-dlp.
 import type { DownloadItem, ResolveResult, ResolvedItemKind } from "../shared/contracts.ts";
 import { inferPlatform, sourceLabel } from "../shared/sources.ts";
