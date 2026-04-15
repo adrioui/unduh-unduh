@@ -395,6 +395,29 @@ button {
   color: var(--danger);
 }
 
+/* Result group header with copy caption */
+.result-group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.result-group-header .result-group-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.copy-caption-btn {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.copy-caption-btn.copied {
+  color: var(--success);
+}
+
 /* Inline download row */
 .download-row {
   display: flex;
@@ -532,5 +555,10 @@ button {
   .download-row-actions {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .result-group-header {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

@@ -453,7 +453,34 @@ function createResultGroup(result: ResolveResult): HTMLElement {
   heading.className = "result-group-title";
   heading.textContent = result.title;
 
-  group.append(heading);
+  if (result.caption) {
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "ghost copy-caption-btn";
+    copyBtn.type = "button";
+    copyBtn.textContent = "Copy caption";
+    copyBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(result.caption!);
+        copyBtn.textContent = "Copied!";
+        copyBtn.classList.add("copied");
+        setTimeout(() => {
+          copyBtn.textContent = "Copy caption";
+          copyBtn.classList.remove("copied");
+        }, 1500);
+      } catch {
+        copyBtn.textContent = "Failed";
+        setTimeout(() => {
+          copyBtn.textContent = "Copy caption";
+        }, 1500);
+      }
+    });
+    const headerRow = document.createElement("div");
+    headerRow.className = "result-group-header";
+    headerRow.append(heading, copyBtn);
+    group.append(headerRow);
+  } else {
+    group.append(heading);
+  }
 
   if (result.message) {
     const message = document.createElement("p");
