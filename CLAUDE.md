@@ -13,6 +13,17 @@ The Worker validates inputs, asks an extractor for downloadable media URLs, sign
 - `pnpm run local:publish` starts the bridge, opens a Quick Tunnel, updates Worker secrets, and deploys.
 - The bridge extracts captions from yt-dlp's `description` field and returns them as `caption`.
 
+## Client architecture
+
+The browser UI (`src/client/`) uses `lit-html` for declarative rendering:
+
+- **State**: A single `AppState` object holds all UI state (form inputs, options, results, download phases, mascot state, health).
+- **Rendering**: `setState(partial)` merges updates into state and calls `render(appTemplate(), root)` to re-render the entire view.
+- **Templates**: Each UI section is a function returning a lit-html `TemplateResult` — `appTemplate()`, `resultsAreaTemplate()`, `resultGroupTemplate()`, `downloadRowTemplate()`, `footerTemplate()`, `switcherChipTemplate()`.
+- **Directives**: `classMap` for conditional CSS, `live` for textarea binding, `map` for lists, `unsafeSVG` for the mascot, `ref` for textarea auto-grow.
+- **Events**: All event handlers are bound declaratively via `@click`, `@submit`, `@input`, `@focus`, `@blur`, `@paste` in templates.
+- **No LitElement**: The app uses only `lit-html`, not the full Lit framework. There are no web components.
+
 ## Hard constraints
 
 - Cloudflare Workers cannot run `child_process`, so do not move `yt-dlp` into Worker code.
@@ -21,7 +32,7 @@ The Worker validates inputs, asks an extractor for downloadable media URLs, sign
 
 ## Repo map
 
-- `src/client/` - browser UI
+- `src/client/` - browser UI (lit-html templates with reactive state)
 - `src/worker/` - Worker routes, upstream client, token handling
 - `src/shared/` - request/response contracts and shared helpers
 - `scripts/local-origin-server.ts` — yt-dlp bridge with clean extractor API

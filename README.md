@@ -25,12 +25,13 @@ The Worker itself never runs `yt-dlp`.
 - TypeScript
 - Cloudflare Workers + static assets
 - `vite-plus`
+- `lit-html` for the browser UI (declarative rendering, no full framework)
 - `pnpm`
 - `yt-dlp` via a local bridge
 
 ## Repo layout
 
-- `src/client/` — browser UI
+- `src/client/` — browser UI (lit-html templates with reactive state)
 - `src/worker/` — Worker API, extractor client, token handling
 - `src/shared/` — shared contracts and helpers
 - `scripts/local-origin-server.ts` — yt-dlp bridge
