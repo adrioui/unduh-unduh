@@ -43,7 +43,7 @@ if (realMode) {
   await runSmoke(env, [tiktokUrl, instagramUrl]);
   console.log("real smoke harness passed");
 } else {
-  const server = await startMockCobalt();
+  const server = await startMockExtractor();
 
   try {
     const env: Env = {
@@ -107,7 +107,7 @@ async function runSmoke(env: Env, urls: string[]): Promise<void> {
   assert.ok(bytes.byteLength > 0);
 }
 
-async function startMockCobalt(): Promise<{
+async function startMockExtractor(): Promise<{
   instance: ReturnType<typeof createServer>;
   url: string;
 }> {
@@ -123,16 +123,15 @@ async function startMockCobalt(): Promise<{
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
-          cobalt: {
-            services: ["instagram", "tiktok"],
-            version: "mock-1.0.0",
-          },
+          ok: true,
+          supportedPlatforms: ["instagram", "tiktok"],
+          version: "mock-1.0.0",
         }),
       );
       return;
     }
 
-    if (request.method === "POST" && url.pathname === "/") {
+    if (request.method === "POST" && url.pathname === "/extract") {
       const body = await readBody(request);
       const payload = JSON.parse(body) as { url: string };
       response.writeHead(200, { "content-type": "application/json" });
@@ -140,14 +139,9 @@ async function startMockCobalt(): Promise<{
       if (payload.url.includes("instagram.com")) {
         response.end(
           JSON.stringify({
-            picker: [
-              {
-                thumb: "http://127.0.0.1:0/thumb.jpg",
-                type: "video",
-                url: `${serverUrl(instance)}/files/instagram-reel.mp4`,
-              },
-            ],
-            status: "picker",
+            filename: "instagram-reel.mp4",
+            url: `${serverUrl(instance)}/files/instagram-reel.mp4`,
+            type: "video",
           }),
         );
         return;
@@ -156,8 +150,8 @@ async function startMockCobalt(): Promise<{
       response.end(
         JSON.stringify({
           filename: "tiktok-video.mp4",
-          status: "tunnel",
           url: `${serverUrl(instance)}/files/tiktok-video.mp4`,
+          type: "video",
         }),
       );
       return;
