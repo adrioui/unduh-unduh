@@ -2,41 +2,23 @@
 
 Unduh Unduh is a Cloudflare-deployable downloader for public Instagram Reels and TikTok videos.
 
-## Which extractor does it use?
+## How it works
 
-**Both, but not in the same place:**
+The Worker talks to a local extractor bridge that shells out to `yt-dlp` for URL resolution.
 
-- **Hosted / normal mode:** the Worker talks to a **Cobalt-compatible HTTP API**.
-- **Free local fallback:** the Worker talks to the repo's **local bridge**, and that bridge uses the machine's installed **`yt-dlp`**.
+```text
+Browser -> Cloudflare Worker -> extractor bridge -> yt-dlp
+                             -> signed /api/download -> proxied file stream
+```
 
 The Worker itself never runs `yt-dlp`.
-
-## Architecture
-
-### Hosted mode
-
-```text
-Browser -> Cloudflare Worker -> Cobalt API -> media URL
-                             -> signed /api/download -> proxied file stream
-```
-
-Use this when you already run Cobalt somewhere reachable by the Worker.
-
-### Local fallback mode
-
-```text
-Browser -> Cloudflare Worker -> Quick Tunnel -> local bridge -> yt-dlp
-                             -> signed /api/download -> proxied file stream
-```
-
-Use this when you do not want to pay for a separate hosted Cobalt instance.
 
 ## Why it is shaped this way
 
 - Cloudflare Workers do not support `child_process`, so `yt-dlp` cannot run inside Worker code.
-- Cobalt already exposes an extractor over HTTP, which fits the Worker runtime well.
-- The local fallback keeps the same HTTP contract by exposing a small Cobalt-compatible bridge backed by `yt-dlp`.
+- The bridge exposes a clean HTTP API that the Worker calls via `EXTRACTOR_URL`.
 - Download links are signed so the Worker does not become an open proxy.
+- The bridge extracts captions from yt-dlp's `description` field and returns them to the UI.
 
 ## Stack
 
@@ -44,17 +26,16 @@ Use this when you do not want to pay for a separate hosted Cobalt instance.
 - Cloudflare Workers + static assets
 - `vite-plus`
 - `pnpm`
-- Cobalt-compatible upstream API
-- Optional local `yt-dlp` bridge for the free fallback path
+- `yt-dlp` via a local bridge
 
 ## Repo layout
 
 - `src/client/` — browser UI
 - `src/worker/` — Worker API, extractor client, token handling
 - `src/shared/` — shared contracts and helpers
-- `scripts/local-origin-server.ts` — local Cobalt-compatible bridge backed by `yt-dlp`
-- `scripts/*.sh` — local bridge lifecycle and publish helpers
-- `tests/` — Worker tests and smoke harness support
+- `scripts/local-origin-server.ts` — yt-dlp bridge
+- `scripts/*.sh` — bridge lifecycle and publish helpers
+- `tests/` — Worker tests and smoke harness
 
 ## Install
 
@@ -72,19 +53,18 @@ cp .dev.vars.example .dev.vars
 
 Required values:
 
-- `COBALT_API_URL`
+- `EXTRACTOR_URL`
 - `DOWNLOAD_TOKEN_SECRET`
 
 Optional values:
 
-- `COBALT_API_KEY`
-- `COBALT_BEARER_TOKEN`
-- `COBALT_TIMEOUT_MS`
+- `EXTRACTOR_API_KEY`
+- `EXTRACTOR_BEARER_TOKEN`
+- `EXTRACTOR_TIMEOUT_MS`
 - `MAX_BATCH_SIZE`
 - `MAX_UPSTREAM_CONCURRENCY`
 
-`COBALT_API_URL` always means “the extractor upstream the Worker should call.”
-In normal deployments that is Cobalt. In local fallback mode, `local:publish` temporarily points it at the repo's local bridge.
+`EXTRACTOR_URL` is the extractor bridge the Worker should call.
 
 ## Commands
 
@@ -99,62 +79,7 @@ pnpm run smoke
 pnpm run verify
 ```
 
-Preferred local fallback commands:
-
-```bash
-pnpm run local:start
-pnpm run local:status
-pnpm run local:stop
-pnpm run local:publish
-```
-
-Legacy aliases still work:
-
-```bash
-pnpm run origin:start
-pnpm run origin:status
-pnpm run origin:stop
-pnpm run origin:publish
-```
-
-## Local smoke flow
-
-### Mock smoke flow
-
-```bash
-pnpm run smoke
-```
-
-This uses the repo's mock extractor harness.
-
-### Real smoke flow against Cobalt
-
-Bring up your own Cobalt instance first. Cobalt docs:
-
-- Run guide: <https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md>
-- API docs: <https://github.com/imputnet/cobalt/blob/main/docs/api.md>
-
-Example:
-
-```bash
-git clone --depth=1 https://github.com/imputnet/cobalt /tmp/cobalt
-docker build -t unduh-unduh-cobalt /tmp/cobalt
-docker run --rm -p 9000:9000 -e API_URL=http://127.0.0.1:9000/ unduh-unduh-cobalt
-```
-
-Then in another shell:
-
-```bash
-cp .dev.vars.example .dev.vars
-COBALT_API_URL=http://127.0.0.1:9000/ \
-SMOKE_TIKTOK_URL='https://www.tiktok.com/@example/video/123' \
-SMOKE_INSTAGRAM_URL='https://www.instagram.com/reel/example/' \
-pnpm run smoke -- --real
-```
-
-## Free local fallback with yt-dlp
-
-If you do not want to host Cobalt, you can use this machine as the extractor.
+## Local bridge with yt-dlp
 
 ```bash
 pnpm run local:publish
@@ -177,6 +102,36 @@ Important limitations:
 
 Runtime state and generated local secrets live under `.runtime/local-origin/` and are ignored by git.
 
+## Local bridge commands
+
+```bash
+pnpm run local:start
+pnpm run local:status
+pnpm run local:stop
+pnpm run local:publish
+```
+
+## Smoke tests
+
+### Mock smoke test
+
+```bash
+pnpm run smoke
+```
+
+This uses the repo's mock extractor harness.
+
+### Real smoke test
+
+Point `EXTRACTOR_URL` at a real extractor bridge, then:
+
+```bash
+EXTRACTOR_URL=http://your-extractor:port/ \
+SMOKE_TIKTOK_URL='https://www.tiktok.com/@example/video/123' \
+SMOKE_INSTAGRAM_URL='https://www.instagram.com/reel/example/' \
+pnpm run smoke -- --real
+```
+
 ## Deploy to Cloudflare
 
 ```bash
@@ -190,5 +145,4 @@ The extractor stays external by design.
 ## Notes
 
 - Only public TikTok and Instagram content is supported.
-- The Worker rejects upstream responses that require local post-processing.
 - Run `pnpm run verify` before pushing changes.
