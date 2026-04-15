@@ -9,7 +9,7 @@ The Worker validates inputs, asks an extractor for downloadable media URLs, sign
 
 - Flow: `Worker -> extractor bridge -> yt-dlp`
 - `scripts/local-origin-server.ts` is the bridge that shells out to `yt-dlp`.
-- The Worker talks to the bridge via `EXTRACTOR_URL` (a clean yt-dlp-native API, not Cobalt-shaped).
+- The Worker talks to the bridge via `EXTRACTOR_URL` using a clean yt-dlp-native API.
 - `pnpm run local:publish` starts the bridge, opens a Quick Tunnel, updates Worker secrets, and deploys.
 - The bridge extracts captions from yt-dlp's `description` field and returns them as `caption`.
 
