@@ -22,7 +22,7 @@ function downloadPhaseLabel(phase: DownloadPhase): string {
     case "downloading":
       return "Downloading";
     case "done":
-      return "Done";
+      return "Started";
     case "error":
       return "Retry";
     default:
@@ -37,7 +37,7 @@ function downloadButtonLabel(phase: DownloadPhase): string {
     case "downloading":
       return "Downloading...";
     case "done":
-      return "Download";
+      return "Download again";
     case "error":
       return "Retry";
     default:
@@ -45,13 +45,35 @@ function downloadButtonLabel(phase: DownloadPhase): string {
   }
 }
 
-function resultsSummaryText(results: ResolveResult[]): string {
-  if (!results.length) return "";
-  const items = results.flatMap((r) => r.items);
-  const completed = items.filter((i) => getDownloadState(i.id).phase === "done").length;
-  const failed = items.filter((i) => getDownloadState(i.id).phase === "error").length;
+interface ResultsStats {
+  completed: number;
+  failed: number;
+  hasActive: boolean;
+  items: DownloadItem[];
+}
+
+function collectResultsStats(results: ResolveResult[]): ResultsStats {
+  const stats: ResultsStats = { completed: 0, failed: 0, hasActive: false, items: [] };
+
+  for (const result of results) {
+    for (const item of result.items) {
+      stats.items.push(item);
+      const phase = getDownloadState(item.id).phase;
+      if (phase === "done") stats.completed += 1;
+      else if (phase === "error") stats.failed += 1;
+      else if (phase === "queued" || phase === "downloading") stats.hasActive = true;
+    }
+  }
+
+  return stats;
+}
+
+function resultsSummaryText(stats: ResultsStats): string {
+  const { completed, failed, items } = stats;
+  if (!items.length) return "";
+
   const progressParts = [
-    completed ? `${completed} saved` : null,
+    completed ? `${completed} started` : null,
     failed ? `${failed} failed` : null,
   ]
     .filter(Boolean)
@@ -118,25 +140,21 @@ function resultGroupTemplate(result: ResolveResult) {
 // ─── Main results area template ─────────────────────────────────────────────
 
 export function resultsAreaTemplate(results: ResolveResult[]) {
-  const items = results.flatMap((r) => r.items);
-  const hasActive = items.some((i) => {
-    const phase = getDownloadState(i.id).phase;
-    return phase === "queued" || phase === "downloading";
-  });
+  const stats = collectResultsStats(results);
 
   return html`
     <div class="results-area" id="results-area">
       <div class="results-head">
-        <div class="results-summary" id="results-summary">${resultsSummaryText(results)}</div>
+        <div class="results-summary" id="results-summary">${resultsSummaryText(stats)}</div>
         <button
           class="ghost results-download-all"
           id="download-all"
           type="button"
-          ?hidden=${items.length === 0}
-          ?disabled=${hasActive}
-          @click=${handleDownloadAllClick(items)}
+          ?hidden=${stats.items.length === 0}
+          ?disabled=${stats.hasActive}
+          @click=${handleDownloadAllClick(stats.items)}
         >
-          ${hasActive ? "Downloading..." : `Download all (${items.length})`}
+          ${stats.hasActive ? "Downloading..." : `Download all (${stats.items.length})`}
         </button>
       </div>
       <div class="results-list" id="results">
