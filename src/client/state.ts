@@ -24,6 +24,7 @@ const createState = (): AppState => ({
 class Store {
   private state: AppState = createState();
   private listeners: Set<StateListener> = new Set();
+  private notifyQueued = false;
 
   /** Get current immutable state snapshot */
   getState(): Readonly<AppState> {
@@ -39,13 +40,10 @@ class Store {
   /** Update state with partial or updater function */
   setState(updater: StateUpdater): void {
     const updates = typeof updater === "function" ? updater(this.state) : updater;
-    const newState = { ...this.state, ...updates };
+    if (isEmptyUpdate(updates) || !hasChanges(this.state, updates)) return;
 
-    // Check if state actually changed
-    if (newState === this.state) return;
-
-    this.state = newState;
-    this.notify();
+    this.state = { ...this.state, ...updates };
+    this.queueNotify();
   }
 
   /** Get mutable download states map for batch updates */
@@ -55,28 +53,47 @@ class Store {
 
   /** Update download state for a specific item */
   setDownloadState(id: string, ds: DownloadState): void {
+    const current = this.state.downloadStates.get(id);
+    if (current?.phase === ds.phase && current.message === ds.message) return;
+
     this.state.downloadStates.set(id, ds);
-    this.notify();
+    this.queueNotify();
   }
 
   /** Clear all download states */
   clearDownloadStates(): void {
+    if (!this.state.downloadStates.size) return;
+
     this.state.downloadStates.clear();
-    this.notify();
+    this.queueNotify();
   }
 
   /** Reset to initial state */
   reset(): void {
     this.state = createState();
-    this.notify();
+    this.queueNotify();
   }
 
-  private notify(): void {
-    const snapshot = this.getState();
-    for (const listener of this.listeners) {
-      listener(snapshot);
-    }
+  private queueNotify(): void {
+    if (this.notifyQueued) return;
+
+    this.notifyQueued = true;
+    queueMicrotask(() => {
+      this.notifyQueued = false;
+      const snapshot = this.getState();
+      for (const listener of this.listeners) {
+        listener(snapshot);
+      }
+    });
   }
+}
+
+function isEmptyUpdate(updates: Partial<AppState>): boolean {
+  return Object.keys(updates).length === 0;
+}
+
+function hasChanges(state: AppState, updates: Partial<AppState>): boolean {
+  return Object.entries(updates).some(([key, value]) => state[key as keyof AppState] !== value);
 }
 
 // ─── Singleton store instance ───────────────────────────────────────────────
