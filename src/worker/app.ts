@@ -4,7 +4,7 @@ import {
   type ResolveRequestBody,
   type ResolveResponseBody,
 } from "../shared/contracts.ts";
-import { isSupportedSourceUrl, normalizeSourceUrl } from "../shared/sources.ts";
+import { inferPlatform, isSupportedSourceUrl, normalizeSourceUrl } from "../shared/sources.ts";
 import { sanitizeFilename } from "../shared/strings.ts";
 import { readIntEnv, requireEnv } from "./env.ts";
 import {
@@ -95,7 +95,7 @@ async function handleResolve(request: Request, env: Env): Promise<Response> {
   }
 
   const maxBatchSize = readIntEnv(env.MAX_BATCH_SIZE, 25, 1, 100);
-  const concurrency = readIntEnv(env.MAX_UPSTREAM_CONCURRENCY, 3, 1, 10);
+  const concurrency = readIntEnv(env.MAX_UPSTREAM_CONCURRENCY, 1, 1, 10);
   const normalizedUrls = Array.isArray(payload.urls)
     ? payload.urls
         .map((value) => (typeof value === "string" ? normalizeSourceUrl(value) : null))
@@ -117,8 +117,21 @@ async function handleResolve(request: Request, env: Env): Promise<Response> {
     );
   }
 
-  const results = await mapWithConcurrency(normalizedUrls, concurrency, async (sourceUrl) =>
+  const uniqueUrls = [...new Set(normalizedUrls)];
+  const uniqueResults = await mapWithConcurrency(uniqueUrls, concurrency, async (sourceUrl) =>
     resolveSource(env, sourceUrl),
+  );
+  const resultsByUrl = new Map(uniqueResults.map((result) => [result.sourceUrl, result]));
+  const results = normalizedUrls.map(
+    (sourceUrl) =>
+      resultsByUrl.get(sourceUrl) ?? {
+        items: [],
+        message: "Unable to resolve this URL.",
+        platform: inferPlatform(sourceUrl),
+        sourceUrl,
+        status: "error" as const,
+        title: sourceUrl,
+      },
   );
 
   const body: ResolveResponseBody = {
@@ -152,7 +165,7 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
   const upstream = await fetchUpstream(
     env,
     remoteUrl,
-    await buildUpstreamDownloadRequestInit(env, remoteUrl),
+    await buildUpstreamDownloadRequestInit(env, remoteUrl, payload.remoteHeaders),
   );
 
   if (!upstream.ok || !upstream.body) {

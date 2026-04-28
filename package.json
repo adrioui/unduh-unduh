@@ -8,6 +8,7 @@
     "check": "vp check",
     "deploy": "pnpm run build && wrangler deploy",
     "dev": "wrangler dev",
+    "extractor:test": "cd extractor && go test ./...",
     "format": "vp fmt",
     "format:check": "vp fmt --check",
     "lint": "vp lint",
@@ -26,7 +27,7 @@
     "smoke": "node --experimental-strip-types scripts/smoke-harness.ts",
     "test": "node --experimental-strip-types --test tests/**/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "verify": "pnpm run check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
+    "verify": "pnpm run check && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run extractor:test && pnpm run build"
   },
   "dependencies": {
     "lit-html": "^3.3.2"

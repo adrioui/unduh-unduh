@@ -3,6 +3,7 @@ import { asciiFilenameHeader, sanitizeFilename } from "../shared/strings.ts";
 export interface DownloadTokenPayload {
   expiresAt: number;
   filename: string;
+  remoteHeaders?: Record<string, string>;
   remoteUrl: string;
 }
 
@@ -18,6 +19,7 @@ export async function issueDownloadToken(
       JSON.stringify({
         expiresAt: payload.expiresAt,
         filename: sanitizeFilename(payload.filename),
+        ...(payload.remoteHeaders ? { remoteHeaders: payload.remoteHeaders } : {}),
         remoteUrl: payload.remoteUrl,
       }),
     ),
@@ -55,7 +57,8 @@ export async function readDownloadToken(
     if (
       typeof parsed.remoteUrl !== "string" ||
       typeof parsed.filename !== "string" ||
-      typeof parsed.expiresAt !== "number"
+      typeof parsed.expiresAt !== "number" ||
+      (parsed.remoteHeaders !== undefined && !isStringRecord(parsed.remoteHeaders))
     ) {
       return null;
     }
@@ -63,6 +66,7 @@ export async function readDownloadToken(
     return {
       expiresAt: parsed.expiresAt,
       filename: sanitizeFilename(parsed.filename),
+      ...(parsed.remoteHeaders ? { remoteHeaders: parsed.remoteHeaders } : {}),
       remoteUrl: parsed.remoteUrl,
     };
   } catch {
@@ -87,6 +91,16 @@ async function sign(secret: string, body: string): Promise<Uint8Array> {
 
   const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
   return new Uint8Array(signature);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.entries(value).every(
+    ([key, entry]) => typeof key === "string" && typeof entry === "string",
+  );
 }
 
 function base64UrlEncode(bytes: Uint8Array): string {

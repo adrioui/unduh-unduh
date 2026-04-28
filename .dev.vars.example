@@ -1,12 +1,12 @@
-# The Worker talks to a Cobalt-compatible HTTP upstream.
-# In normal deployments this is your Cobalt instance.
-# `pnpm run local:publish` temporarily points it at the repo's local yt-dlp bridge instead.
-COBALT_API_URL=http://127.0.0.1:9000/
+# The Worker talks to the external extractor bridge.
+EXTRACTOR_URL=http://127.0.0.1:9010/
 DOWNLOAD_TOKEN_SECRET=replace-with-a-long-random-string
-# Optional: use one of these if your upstream is protected.
-# COBALT_API_KEY=
-# COBALT_BEARER_TOKEN=
-# COBALT_TIMEOUT_MS=20000
-# MAX_BATCH_SIZE=25
-# MAX_UPSTREAM_CONCURRENCY=3
 
+# Optional: use one of these if your extractor is protected.
+# EXTRACTOR_API_KEY=
+# EXTRACTOR_BEARER_TOKEN=
+
+# Tiny-VPS-friendly defaults: extract one URL at a time and allow yt-dlp enough time.
+# EXTRACTOR_TIMEOUT_MS=90000
+# MAX_BATCH_SIZE=25
+# MAX_UPSTREAM_CONCURRENCY=1

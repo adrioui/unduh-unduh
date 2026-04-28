@@ -12,6 +12,7 @@ PID_FILE="${STATE_DIR}/server.pid"
 LEGACY_PID_FILE="${STATE_DIR}/origin.pid"
 LOG_FILE="${STATE_DIR}/server.log"
 TUNNEL_CONTAINER="${TUNNEL_CONTAINER:-clip-harbor-cloudflared}"
+GO_EXTRACTOR_BIN="${ROOT_DIR}/extractor/unduh-extractor"
 
 mkdir -p "${STATE_DIR}"
 
@@ -55,18 +56,34 @@ stop_local_process() {
   rm -f "${PID_FILE}" "${LEGACY_PID_FILE}"
 }
 
+ensure_extractor_binary() {
+  if [[ -x "${GO_EXTRACTOR_BIN}" ]]; then
+    return
+  fi
+
+  require_command go
+  log "building lightweight Go extractor"
+  (
+    cd "${ROOT_DIR}/extractor"
+    go build -trimpath -ldflags='-s -w' -o "${GO_EXTRACTOR_BIN}" .
+  )
+}
+
 start_local_process() {
   local public_api_url="$1"
 
   stop_local_process
   : >"${LOG_FILE}"
+  ensure_extractor_binary
 
-  log "starting local yt-dlp bridge on 127.0.0.1:${LOCAL_PORT}"
+  log "starting local Go yt-dlp bridge on 127.0.0.1:${LOCAL_PORT}"
   setsid env \
     LOCAL_ORIGIN_API_KEY="${API_KEY}" \
     LOCAL_ORIGIN_PORT="${LOCAL_PORT}" \
     LOCAL_ORIGIN_PUBLIC_URL="${public_api_url}" \
-    node --experimental-strip-types "${ROOT_DIR}/scripts/local-origin-server.ts" \
+    MAX_CONCURRENCY="${MAX_CONCURRENCY:-1}" \
+    GO_MEMORY_LIMIT_MB="${GO_MEMORY_LIMIT_MB:-96}" \
+    "${GO_EXTRACTOR_BIN}" \
     >"${LOG_FILE}" 2>&1 < /dev/null &
 
   local pid=$!

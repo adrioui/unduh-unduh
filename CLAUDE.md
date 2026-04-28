@@ -8,8 +8,12 @@ The Worker validates inputs, asks an extractor for downloadable media URLs, sign
 ## Extraction
 
 - Flow: `Worker -> extractor bridge -> yt-dlp`
-- `scripts/local-origin-server.ts` is the bridge that shells out to `yt-dlp`.
+- `extractor/` is the lightweight Go bridge that shells out to `yt-dlp`; `scripts/local-origin-server.ts` is the legacy TypeScript bridge.
 - The Worker talks to the bridge via `EXTRACTOR_URL` using a clean yt-dlp-native API.
+- Worker extraction concurrency defaults to `1` for tiny VPS stability; raise `MAX_UPSTREAM_CONCURRENCY` only when the extractor host has headroom.
+- The Worker deduplicates repeated URLs in one resolve batch, and the Go bridge keeps a bounded short-lived source/in-flight cache to avoid repeated `yt-dlp` subprocesses for the same URL.
+- Safe direct HTTPS media URLs are proxied by the Worker directly; URLs requiring private headers/cookies fall back through the bridge.
+- The Go bridge supports `YTDLP_PATH` and `YTDLP_VERSION`; `YTDLP_VERSION` lets health checks avoid spawning `yt-dlp`.
 - `pnpm run local:publish` starts the bridge, opens a Quick Tunnel, updates Worker secrets, and deploys.
 - The bridge extracts captions from yt-dlp's `description` field and returns them as `caption`.
 
@@ -35,7 +39,8 @@ The browser UI (`src/client/`) uses `lit-html` for declarative rendering:
 - `src/client/` - browser UI (lit-html templates with reactive state)
 - `src/worker/` - Worker routes, upstream client, token handling
 - `src/shared/` - request/response contracts and shared helpers
-- `scripts/local-origin-server.ts` — yt-dlp bridge with clean extractor API
+- `extractor/` — lightweight Go yt-dlp bridge with clean extractor API
+- `scripts/local-origin-server.ts` — legacy TypeScript yt-dlp bridge
 - `scripts/*.sh` - local bridge lifecycle and publish helpers
 - `tests/` - unit/integration-style tests for Worker behavior
 

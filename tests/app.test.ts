@@ -99,6 +99,48 @@ test("resolve route returns normalized results", async () => {
   }
 });
 
+test("resolve route deduplicates repeated URLs before calling extractor", async () => {
+  const originalFetch = globalThis.fetch;
+  let extractCalls = 0;
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url === "https://extractor.example/extract" && init?.method === "POST") {
+      extractCalls += 1;
+      return new Response(
+        JSON.stringify({
+          filename: "clip.mp4",
+          type: "video",
+          url: "https://extractor.example/download/clip.mp4",
+        }),
+        { status: 200 },
+      );
+    }
+
+    throw new Error(`unexpected fetch ${url} ${init?.method ?? ""}`);
+  }) as typeof fetch;
+
+  try {
+    const source = "https://www.tiktok.com/@demo/video/1234567890123456789";
+    const resolve = await handleRequest(
+      new Request("https://app.example/api/resolve", {
+        body: JSON.stringify({ urls: [source, source] }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+      createEnv(),
+    );
+
+    assert.equal(resolve.status, 200);
+    const body = (await resolve.json()) as { results: Array<{ status: string }> };
+    assert.equal(extractCalls, 1);
+    assert.equal(body.results.length, 2);
+    assert.equal(body.results[0]?.status, "ready");
+    assert.equal(body.results[1]?.status, "ready");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("resolve route passes caption from extractor", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input, init) => {
@@ -238,6 +280,47 @@ test("download route proxies upstream stream", async () => {
     const received = new Uint8Array(await response.arrayBuffer());
     assert.equal(received.length, largeBody.length);
     assert.deepEqual(received, largeBody);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("download route proxies direct CDN URLs without leaking extractor auth", async () => {
+  const originalFetch = globalThis.fetch;
+  let seenAuthorization: string | null = null;
+  let seenUserAgent: string | null = null;
+
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url === "https://cdn.example/clip.mp4") {
+      const headers = new Headers(init?.headers);
+      seenAuthorization = headers.get("authorization");
+      seenUserAgent = headers.get("user-agent");
+      return new Response("cdn-bytes", { status: 200 });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const env = { ...createEnv(), EXTRACTOR_API_KEY: "private-key" };
+    const token = await issueDownloadToken("test-secret", {
+      expiresAt: Date.now() + 60_000,
+      filename: "clip.mp4",
+      remoteHeaders: {
+        Cookie: "must-not-be-used",
+        "User-Agent": "yt-dlp-test-agent",
+      },
+      remoteUrl: "https://cdn.example/clip.mp4",
+    });
+
+    const response = await handleRequest(
+      new Request(`https://app.example/api/download?token=${encodeURIComponent(token)}`),
+      env,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(seenAuthorization, null);
+    assert.equal(seenUserAgent, "yt-dlp-test-agent");
   } finally {
     globalThis.fetch = originalFetch;
   }

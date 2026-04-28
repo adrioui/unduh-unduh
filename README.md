@@ -4,7 +4,7 @@ Unduh Unduh is a Cloudflare-deployable downloader for public Instagram Reels and
 
 ## How it works
 
-The Worker talks to a local extractor bridge that shells out to `yt-dlp` for URL resolution.
+The Worker talks to a lightweight Go extractor bridge that shells out to `yt-dlp` for URL resolution.
 
 ```text
 Browser -> Cloudflare Worker -> extractor bridge -> yt-dlp
@@ -19,6 +19,8 @@ The Worker itself never runs `yt-dlp`.
 - The bridge exposes a clean HTTP API that the Worker calls via `EXTRACTOR_URL`.
 - Download links are signed so the Worker does not become an open proxy.
 - The bridge extracts captions from yt-dlp's `description` field and returns them to the UI.
+- Repeated resolve requests are deduplicated in the Worker and served from a short-lived bridge source cache when possible, avoiding extra `yt-dlp` subprocesses on small hosts.
+- When yt-dlp returns a safe direct HTTPS media URL, the Worker proxies that CDN URL directly so the VPS only performs extraction; downloads fall back through the bridge when private headers/cookies are required.
 
 ## Stack
 
@@ -34,7 +36,8 @@ The Worker itself never runs `yt-dlp`.
 - `src/client/` — browser UI (lit-html templates with reactive state)
 - `src/worker/` — Worker API, extractor client, token handling
 - `src/shared/` — shared contracts and helpers
-- `scripts/local-origin-server.ts` — yt-dlp bridge
+- `extractor/` — lightweight Go yt-dlp bridge
+- `scripts/local-origin-server.ts` — legacy TypeScript yt-dlp bridge
 - `scripts/*.sh` — bridge lifecycle and publish helpers
 - `tests/` — Worker tests and smoke harness
 
@@ -61,9 +64,9 @@ Optional values:
 
 - `EXTRACTOR_API_KEY`
 - `EXTRACTOR_BEARER_TOKEN`
-- `EXTRACTOR_TIMEOUT_MS`
+- `EXTRACTOR_TIMEOUT_MS` (default: `90000`)
 - `MAX_BATCH_SIZE`
-- `MAX_UPSTREAM_CONCURRENCY`
+- `MAX_UPSTREAM_CONCURRENCY` (default: `1` for tiny VPS stability)
 
 `EXTRACTOR_URL` is the extractor bridge the Worker should call.
 
@@ -88,7 +91,8 @@ pnpm run local:publish
 
 That command:
 
-- starts the local bridge on `127.0.0.1:9010`
+- builds and starts the lightweight Go bridge on `127.0.0.1:9010`
+- caps the Go runtime heap by default (`GO_MEMORY_LIMIT_MB=96`) while leaving memory for `yt-dlp`
 - uses the machine's installed `yt-dlp` for extraction
 - generates a private API key for the bridge
 - starts a Cloudflare Quick Tunnel
@@ -102,6 +106,15 @@ Important limitations:
 - if the bridge or tunnel restarts, run `pnpm run local:publish` again
 
 Runtime state and generated local secrets live under `.runtime/local-origin/` and are ignored by git.
+
+Useful extractor tuning knobs for small hosts:
+
+- `MAX_CONCURRENCY` / `MAX_JOBS` — concurrent `yt-dlp` jobs (default `1`)
+- `BUSY_WAIT_SECONDS` — wait briefly for a free job slot before returning busy (default `15`)
+- `MAX_CACHE_ENTRIES` — cap short-lived download IDs and source-cache entries (default `64`)
+- `GO_MEMORY_LIMIT_MB` — soft Go runtime memory cap (default `96`)
+- `YTDLP_TIMEOUT_SECONDS` — extraction timeout (default `90`)
+- `YTDLP_PATH` / `YTDLP_VERSION` — optional pinned binary path/version for faster health checks and predictable subprocess lookup
 
 ## Local bridge commands
 

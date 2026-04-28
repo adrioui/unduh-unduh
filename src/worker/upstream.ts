@@ -18,6 +18,8 @@ interface ExtractorResolveResponse {
   url: string;
   filename: string;
   caption?: string;
+  directUrl?: string;
+  httpHeaders?: Record<string, string>;
   thumbnailUrl?: string;
   type?: string;
 }
@@ -60,7 +62,7 @@ export async function fetchUpstreamInfo(env: Env): Promise<{
 // ── Source resolution ──
 
 export async function resolveSource(env: Env, sourceUrl: string): Promise<ResolveResult> {
-  const timeoutMs = Number(env.EXTRACTOR_TIMEOUT_MS ?? "20000");
+  const timeoutMs = Number(env.EXTRACTOR_TIMEOUT_MS ?? "90000");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -98,7 +100,8 @@ export async function resolveSource(env: Env, sourceUrl: string): Promise<Resolv
         downloadPath: await buildDownloadPath(
           env,
           filename,
-          toInternalDownloadUrl(env, payload.url),
+          toDownloadUrl(env, payload),
+          sanitizeRemoteHeaders(payload.httpHeaders),
         ),
         filename,
         id: crypto.randomUUID(),
@@ -132,9 +135,13 @@ export async function resolveSource(env: Env, sourceUrl: string): Promise<Resolv
 
 // ── Download helpers ──
 
-function toInternalDownloadUrl(env: Env, url: string): string {
+function toDownloadUrl(env: Env, payload: ExtractorResolveResponse): string {
+  if (payload.directUrl && isSafeDirectUrl(payload.directUrl, payload.httpHeaders)) {
+    return payload.directUrl;
+  }
+
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(payload.url);
     if (parsed.pathname.startsWith("/download")) {
       const base = new URL(env.EXTRACTOR_URL);
       const basePath = base.pathname.replace(/\/+$/u, "");
@@ -143,18 +150,26 @@ function toInternalDownloadUrl(env: Env, url: string): string {
   } catch {
     // ignore parse errors, fall back to original URL
   }
-  return url;
+  return payload.url;
 }
 
 export async function buildUpstreamDownloadRequestInit(
   env: Env,
-  _remoteUrl: string,
+  remoteUrl: string,
+  remoteHeaders?: Record<string, string>,
 ): Promise<RequestInit> {
-  // The remoteUrl always comes from our signed download token and should
-  // point to the extractor. Always send auth headers when we have them so
-  // the extractor's /download endpoint never receives an anonymous request.
+  const headers = new Headers(sanitizeRemoteHeaders(remoteHeaders));
+
+  // Only send extractor credentials back to the configured extractor. Direct
+  // CDN downloads must never receive the private extractor API key.
+  if (isConfiguredExtractorUrl(env, remoteUrl)) {
+    for (const [name, value] of Object.entries(buildUpstreamHeaders(env))) {
+      headers.set(name, value);
+    }
+  }
+
   return {
-    headers: buildUpstreamHeaders(env),
+    headers,
     redirect: "follow",
   };
 }
@@ -175,6 +190,49 @@ export function fetchUpstream(
   return fetch(input, init);
 }
 
+function sanitizeRemoteHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!headers) {
+    return undefined;
+  }
+
+  const allowed: Record<string, string> = {
+    accept: "Accept",
+    "accept-language": "Accept-Language",
+    referer: "Referer",
+    "user-agent": "User-Agent",
+  };
+  const sanitized: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    const canonical = allowed[name.trim().toLowerCase()];
+    if (canonical && !/[\r\n]/u.test(value) && value.length <= 512) {
+      sanitized[canonical] = value;
+    }
+  }
+
+  return Object.keys(sanitized).length ? sanitized : undefined;
+}
+
+function isSafeDirectUrl(url: string, headers: Record<string, string> | undefined): boolean {
+  try {
+    if (new URL(url).protocol !== "https:") {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  if (!headers) {
+    return true;
+  }
+
+  return !Object.keys(headers).some((name) => {
+    const lower = name.trim().toLowerCase();
+    return lower === "authorization" || lower === "cookie" || lower === "proxy-authorization";
+  });
+}
+
 function isConfiguredExtractorUrl(env: Env, input: RequestInfo | URL): boolean {
   try {
     const target = new URL(input instanceof Request ? input.url : input.toString());
@@ -186,7 +244,7 @@ function isConfiguredExtractorUrl(env: Env, input: RequestInfo | URL): boolean {
 
 // ── Internals ──
 
-function buildUpstreamHeaders(env: Env): HeadersInit {
+function buildUpstreamHeaders(env: Env): Record<string, string> {
   if (env.EXTRACTOR_API_KEY) {
     return {
       Authorization: `Api-Key ${env.EXTRACTOR_API_KEY}`,
@@ -216,10 +274,16 @@ function mapTypeToKind(type: string | undefined): ResolvedItemKind {
   }
 }
 
-async function buildDownloadPath(env: Env, filename: string, remoteUrl: string): Promise<string> {
+async function buildDownloadPath(
+  env: Env,
+  filename: string,
+  remoteUrl: string,
+  remoteHeaders?: Record<string, string>,
+): Promise<string> {
   const token = await issueDownloadToken(env.DOWNLOAD_TOKEN_SECRET, {
     expiresAt: Date.now() + 1000 * 60 * 15,
     filename,
+    ...(remoteHeaders ? { remoteHeaders } : {}),
     remoteUrl,
   });
   return `/api/download?token=${encodeURIComponent(token)}`;
