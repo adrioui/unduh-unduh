@@ -13,8 +13,6 @@ import {
   clearDownloadStates,
 } from "./state.ts";
 
-const downloadConcurrency = 3;
-
 // ─── Core API functions ─────────────────────────────────────────────────────
 
 export async function resolveBatch(): Promise<void> {
@@ -85,67 +83,22 @@ export async function refreshHealth(): Promise<void> {
 }
 
 export async function queueDownloads(items: DownloadItem[]): Promise<void> {
-  const queue = items.filter((item) => {
+  for (const item of items) {
     const phase = getDownloadState(item.id).phase;
-    return phase !== "queued" && phase !== "downloading";
-  });
+    if (phase === "queued" || phase === "downloading") continue;
 
-  if (!queue.length) return;
-
-  for (const item of queue) {
-    setDownloadState(item.id, { phase: "queued" });
-  }
-
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(downloadConcurrency, queue.length) }, async () => {
-    while (cursor < queue.length) {
-      const nextIndex = cursor;
-      cursor += 1;
-      await performDownload(queue[nextIndex]!);
-    }
-  });
-
-  await Promise.all(workers);
-}
-
-async function performDownload(item: DownloadItem): Promise<void> {
-  setDownloadState(item.id, { phase: "downloading" });
-
-  try {
-    const response = await fetch(item.downloadPath);
-    if (!response.ok) {
-      throw new Error(await readDownloadError(response));
-    }
-
-    const blob = await response.blob();
-    triggerDownload(item, blob);
+    setDownloadState(item.id, { phase: "downloading" });
+    triggerDownload(item);
     setDownloadState(item.id, { phase: "done" });
-  } catch (error) {
-    setDownloadState(item.id, {
-      message: error instanceof Error ? error.message : "Download failed.",
-      phase: "error",
-    });
   }
 }
 
-function triggerDownload(item: DownloadItem, blob: Blob): void {
-  const objectUrl = URL.createObjectURL(blob);
+function triggerDownload(item: DownloadItem): void {
   const anchor = document.createElement("a");
-  anchor.href = objectUrl;
+  anchor.href = item.downloadPath;
   anchor.rel = "noreferrer";
   anchor.download = item.filename;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-}
-
-async function readDownloadError(response: Response): Promise<string> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    const body = (await response.json()) as { error?: string };
-    return body.error ?? `Download failed with status ${response.status}.`;
-  }
-  const text = await response.text();
-  return text || `Download failed with status ${response.status}.`;
 }
