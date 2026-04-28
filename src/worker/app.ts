@@ -162,17 +162,19 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
     return errorResponse(400, "Refusing to proxy an unsafe upstream URL.");
   }
 
-  const upstream = await fetchUpstream(
+  const downloadInit = await buildUpstreamDownloadRequestInit(
     env,
     remoteUrl,
-    await buildUpstreamDownloadRequestInit(env, remoteUrl, payload.remoteHeaders),
+    payload.remoteHeaders,
   );
+  downloadInit.signal = request.signal;
+  const upstream = await fetchUpstream(env, remoteUrl, downloadInit);
 
   if (!upstream.ok || !upstream.body) {
-    const excerpt = upstream.body ? await upstream.text() : "";
+    const excerpt = upstream.body ? await readResponsePrefix(upstream, 200) : "";
     return errorResponse(
       upstream.ok ? 502 : upstream.status,
-      excerpt.slice(0, 200) || "Upstream download request failed.",
+      excerpt || "Upstream download request failed.",
     );
   }
 
@@ -183,6 +185,39 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
     status: upstream.status,
     statusText: upstream.statusText,
   });
+}
+
+async function readResponsePrefix(response: Response, maxBytes: number): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader || maxBytes <= 0) {
+    return "";
+  }
+
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  try {
+    while (received < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      const remaining = maxBytes - received;
+      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      chunks.push(chunk);
+      received += chunk.byteLength;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function cleanDownloadHeaders(upstreamHeaders: Headers, filename: string): Headers {

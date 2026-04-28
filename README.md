@@ -20,8 +20,9 @@ The Worker itself never runs `yt-dlp`.
 - Download links are signed so the Worker does not become an open proxy.
 - The bridge extracts captions from yt-dlp's `description` field and returns them to the UI.
 - Repeated resolve requests are deduplicated in the Worker and served from a short-lived bridge source cache when possible, avoiding extra `yt-dlp` subprocesses on small hosts.
-- The bridge ties fallback downloads to client cancellation, kills timed-out `yt-dlp` process groups, disables transparent gzip decoding for media streams, and asks yt-dlp to skip comments/cache work.
+- The bridge ties fallback downloads to client cancellation, kills timed-out `yt-dlp` process groups, disables transparent gzip decoding for media streams, ignores host-level yt-dlp config, caps metadata JSON size, and asks yt-dlp to skip comments/cache work.
 - When yt-dlp returns a safe direct HTTPS media URL, the Worker proxies that CDN URL directly so the VPS only performs extraction; downloads fall back through the bridge when private headers/cookies are required.
+- Worker download failures only read a small error prefix and abort upstream fetches when clients disconnect, avoiding wasted memory and bandwidth.
 
 ## Stack
 
@@ -115,6 +116,7 @@ Useful extractor tuning knobs for small hosts:
 - `MAX_CACHE_ENTRIES` — cap short-lived download IDs and source-cache entries (default `64`)
 - `GO_MEMORY_LIMIT_MB` — soft Go runtime memory cap (default `96`)
 - `YTDLP_TIMEOUT_SECONDS` — extraction timeout (default `90`)
+- `MAX_YTDLP_JSON_BYTES` — cap extraction metadata output to protect tiny hosts from unexpectedly huge responses (default `4194304`)
 - `YTDLP_PATH` / `YTDLP_VERSION` — optional pinned binary path/version for faster health checks and predictable subprocess lookup
 
 ## Local bridge commands

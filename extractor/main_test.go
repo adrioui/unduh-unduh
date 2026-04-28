@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -122,7 +123,7 @@ func TestSetDirectRequestHeaders(t *testing.T) {
 func TestBuildYtDlpBaseArgsAvoidsExpensiveDefaults(t *testing.T) {
 	ytdlpTimeout = 30 * time.Second
 	args := strings.Join(buildYtDlpBaseArgs(), " ")
-	for _, want := range []string{"--no-playlist", "--no-warnings", "--no-write-comments", "--no-cache-dir"} {
+	for _, want := range []string{"--ignore-config", "--no-playlist", "--no-warnings", "--no-write-comments", "--no-cache-dir"} {
 		if !strings.Contains(args, want) {
 			t.Fatalf("buildYtDlpBaseArgs missing %s in %q", want, args)
 		}
@@ -327,6 +328,26 @@ func TestCleanupCacheCapsEntries(t *testing.T) {
 	if _, ok := sourceCache["new-source"]; !ok {
 		t.Error("expected newest source cache entry to remain")
 	}
+}
+
+func TestRunYtDlpOutputLimitedRejectsHugeOutput(t *testing.T) {
+	origPath := ytdlpPath
+	ytdlpPath = os.Args[0]
+	defer func() { ytdlpPath = origPath }()
+	defer testEnv("GO_WANT_HELPER_PROCESS", "1")()
+
+	_, err := runYtDlpOutputLimited(context.Background(), []string{"-test.run=TestHelperProcess", "--"}, 1024)
+	if err == nil || !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("expected output limit error, got %v", err)
+	}
+}
+
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
+		return
+	}
+	_, _ = os.Stdout.Write([]byte(strings.Repeat("x", 2048)))
+	os.Exit(0)
 }
 
 func TestNewID(t *testing.T) {

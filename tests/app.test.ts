@@ -385,6 +385,49 @@ test("download route surfaces upstream errors", async () => {
   }
 });
 
+test("download route reads only a small upstream error prefix", async () => {
+  const originalFetch = globalThis.fetch;
+  let cancelled = false;
+
+  globalThis.fetch = (async (input) => {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url === "https://extractor.example/download/huge-error.mp4") {
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled = true;
+          },
+          pull(controller) {
+            controller.enqueue(new TextEncoder().encode("x".repeat(512)));
+          },
+        }),
+        { status: 502 },
+      );
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const token = await issueDownloadToken("test-secret", {
+      expiresAt: Date.now() + 60_000,
+      filename: "huge-error.mp4",
+      remoteUrl: "https://extractor.example/download/huge-error.mp4",
+    });
+
+    const response = await handleRequest(
+      new Request(`https://app.example/api/download?token=${encodeURIComponent(token)}`),
+      createEnv(),
+    );
+
+    assert.equal(response.status, 502);
+    const body = (await response.json()) as { error?: string };
+    assert.equal(body.error, "x".repeat(200));
+    assert.equal(cancelled, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("download route handles missing upstream body", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input) => {

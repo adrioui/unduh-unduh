@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -35,19 +36,20 @@ import (
 // ── Configuration (loaded in main) ──
 
 var (
-	port             int
-	publicURL        string
-	apiKey           string
-	ytdlpProxy       string
-	ytdlpCookies     string
-	ytdlpImpersonate string
-	ttlSeconds       int
-	concurrency      int
-	maxCacheEntries  int
-	busyWait         time.Duration
-	ytdlpTimeout     time.Duration
-	saveInfoJSON     bool
-	ytdlpPath        string
+	port              int
+	publicURL         string
+	apiKey            string
+	ytdlpProxy        string
+	ytdlpCookies      string
+	ytdlpImpersonate  string
+	ttlSeconds        int
+	concurrency       int
+	maxCacheEntries   int
+	busyWait          time.Duration
+	ytdlpTimeout      time.Duration
+	maxYtdlpJSONBytes int64
+	saveInfoJSON      bool
+	ytdlpPath         string
 )
 
 func loadConfig() {
@@ -62,6 +64,7 @@ func loadConfig() {
 	maxCacheEntries = max(1, envInt("MAX_CACHE_ENTRIES", 64))
 	busyWait = time.Duration(max(0, envInt("BUSY_WAIT_SECONDS", 15))) * time.Second
 	ytdlpTimeout = time.Duration(max(10, envIntAny([]string{"YTDLP_TIMEOUT_SECONDS", "YTDLP_TIMEOUT"}, 90))) * time.Second
+	maxYtdlpJSONBytes = int64(max(256*1024, envInt("MAX_YTDLP_JSON_BYTES", 4*1024*1024)))
 	saveInfoJSON = envBool("SAVE_INFO_JSON", false)
 	ytdlpPath = findYtdlp()
 	tuneRuntime()
@@ -313,7 +316,7 @@ func streamWithYtDlp(w http.ResponseWriter, r *http.Request, cached *CachedDownl
 // ── yt-dlp helpers ──
 
 func buildYtDlpBaseArgs() []string {
-	args := []string{"--no-playlist", "--no-warnings", "--no-write-comments", "--no-cache-dir", "--socket-timeout", strconv.Itoa(max(10, int(ytdlpTimeout.Seconds())))}
+	args := []string{"--ignore-config", "--no-playlist", "--no-warnings", "--no-write-comments", "--no-cache-dir", "--socket-timeout", strconv.Itoa(max(10, int(ytdlpTimeout.Seconds())))}
 	if ytdlpProxy != "" {
 		args = append(args, "--proxy", ytdlpProxy)
 	}
@@ -402,10 +405,9 @@ func resolveSource(sourceURL string) (*CachedDownload, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ytdlpTimeout)
 	defer cancel()
 
-	cmd := newYtDlpCommand(ctx, args...)
-	out, err := cmd.CombinedOutput()
+	out, err := runYtDlpOutputLimited(ctx, args, maxYtdlpJSONBytes)
 	if err != nil {
-		return nil, fmt.Errorf("yt-dlp extraction failed: %s", trimErr(string(out), err))
+		return nil, fmt.Errorf("yt-dlp extraction failed: %s", trimErr("", err))
 	}
 
 	var parsed ytDlpResult
@@ -505,6 +507,93 @@ func newYtDlpCommand(ctx context.Context, args ...string) *exec.Cmd {
 	)
 	configureCommandCancellation(cmd)
 	return cmd
+}
+
+func runYtDlpOutputLimited(ctx context.Context, args []string, maxBytes int64) ([]byte, error) {
+	cmd := newYtDlpCommand(ctx, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+
+	var stderrBuf limitedBuffer
+	stderrBuf.limit = 32 * 1024
+	stderrDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&stderrBuf, stderr)
+		stderrDone <- err
+	}()
+
+	out, readErr := io.ReadAll(io.LimitReader(stdout, maxBytes+1))
+	if int64(len(out)) > maxBytes {
+		cancelCommand(cmd)
+		_ = cmd.Wait()
+		<-stderrDone
+		return nil, fmt.Errorf("yt-dlp JSON output exceeded %d bytes", maxBytes)
+	}
+
+	waitErr := cmd.Wait()
+	stderrErr := <-stderrDone
+	if readErr != nil {
+		return nil, readErr
+	}
+	if waitErr != nil {
+		if msg := strings.TrimSpace(stderrBuf.String()); msg != "" {
+			return out, fmt.Errorf("%w: %s", waitErr, msg)
+		}
+		return out, waitErr
+	}
+	if stderrErr != nil {
+		return out, stderrErr
+	}
+	return out, nil
+}
+
+func cancelCommand(cmd *exec.Cmd) {
+	if cmd.Cancel != nil {
+		_ = cmd.Cancel()
+		return
+	}
+	if cmd.Process != nil {
+		_ = cmd.Process.Kill()
+	}
+}
+
+type limitedBuffer struct {
+	bytes.Buffer
+	limit     int64
+	truncated bool
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	originalLen := len(p)
+	remaining := int(b.limit) - b.Buffer.Len()
+	if remaining <= 0 {
+		b.truncated = b.truncated || originalLen > 0
+		return originalLen, nil
+	}
+	if len(p) > remaining {
+		_, _ = b.Buffer.Write(p[:remaining])
+		b.truncated = true
+		return originalLen, nil
+	}
+	_, _ = b.Buffer.Write(p)
+	return originalLen, nil
+}
+
+func (b *limitedBuffer) String() string {
+	if !b.truncated {
+		return b.Buffer.String()
+	}
+	return b.Buffer.String() + "..."
 }
 
 // ── Streaming buffer pool ──
