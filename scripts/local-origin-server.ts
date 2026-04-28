@@ -2,6 +2,9 @@ import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 
 // This local bridge exposes a clean yt-dlp-native API for the Worker to consume.
@@ -12,6 +15,9 @@ const execFileAsync = promisify(execFile);
 const port = Number(process.env.LOCAL_ORIGIN_PORT ?? "9010");
 const publicUrl = requiredEnv("LOCAL_ORIGIN_PUBLIC_URL");
 const apiKey = requiredEnv("LOCAL_ORIGIN_API_KEY");
+const ytdlpProxy = process.env.YTDLP_PROXY?.trim();
+const ytdlpCookiesFile = process.env.YTDLP_COOKIES_FILE?.trim();
+const ytdlpImpersonate = process.env.YTDLP_IMPERSONATE?.trim() || "";
 const services = ["instagram", "tiktok"] as const;
 const cache = new Map<string, CachedDownload>();
 const ttlMs = 1000 * 60 * 20;
@@ -111,6 +117,9 @@ const cleanup = setInterval(() => {
   const now = Date.now();
   for (const [key, value] of cache.entries()) {
     if (value.expiresAt < now) {
+      if (value.infoJsonPath) {
+        fs.unlink(value.infoJsonPath, () => {});
+      }
       cache.delete(key);
     }
   }
@@ -125,8 +134,10 @@ server.listen(port, "127.0.0.1", () => {
 
 interface CachedDownload {
   caption?: string;
+  directUrl?: string;
   expiresAt: number;
   filename: string;
+  infoJsonPath?: string;
   sourceUrl: string;
   thumbnailUrl?: string;
   type?: string;
@@ -155,12 +166,23 @@ function inferMediaType(ext: string | undefined): string | undefined {
   return undefined;
 }
 
+function buildYtDlpBaseArgs(): string[] {
+  const args = ["--no-playlist", "--no-warnings"];
+  if (ytdlpProxy) {
+    args.push("--proxy", ytdlpProxy);
+  }
+  if (ytdlpCookiesFile && fs.existsSync(ytdlpCookiesFile)) {
+    args.push("--cookies", ytdlpCookiesFile);
+  }
+  if (ytdlpImpersonate) {
+    args.push("--impersonate", ytdlpImpersonate);
+  }
+  return args;
+}
+
 async function resolveSource(sourceUrl: string): Promise<CachedDownload> {
-  const { stdout } = await execFileAsync(
-    "yt-dlp",
-    ["--skip-download", "--no-playlist", "--no-warnings", "--dump-single-json", sourceUrl],
-    { maxBuffer: 1024 * 1024 * 10 },
-  );
+  const args = [...buildYtDlpBaseArgs(), "--skip-download", "--dump-single-json", sourceUrl];
+  const { stdout } = await execFileAsync("yt-dlp", args, { maxBuffer: 1024 * 1024 * 10 });
 
   const parsed = JSON.parse(stdout) as YtDlpResult;
   const requested = parsed.requested_downloads?.[0];
@@ -170,9 +192,15 @@ async function resolveSource(sourceUrl: string): Promise<CachedDownload> {
 
   const type = inferMediaType(requested.ext) ?? inferMediaType(parsed.ext) ?? "video";
 
+  // Persist the info JSON so yt-dlp can reuse cookies/session on download.
+  const infoJsonPath = path.join(os.tmpdir(), `uu-${randomUUID()}.info.json`);
+  fs.writeFileSync(infoJsonPath, stdout);
+
   const result: CachedDownload = {
+    directUrl: requested.url,
     expiresAt: Date.now() + ttlMs,
     filename: requested.filename ?? `${parsed.id ?? "download"}.${requested.ext ?? "mp4"}`,
+    infoJsonPath,
     sourceUrl,
     type,
   };
@@ -220,41 +248,75 @@ function writeJson(response: ServerResponse, status: number, body: unknown): voi
 }
 
 async function streamDownload(response: ServerResponse, cached: CachedDownload): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const child = spawn(
-      "yt-dlp",
-      ["--no-playlist", "--no-progress", "--no-warnings", "-o", "-", cached.sourceUrl],
-      {
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    );
+  // Prefer --load-info-json so yt-dlp reuses the cookies/session from the
+  // initial extraction pass. TikTok often blocks bare re-extractions.
+  const args: string[] = [
+    ...buildYtDlpBaseArgs(),
+    "--no-progress",
+    "--retries",
+    "3",
+    "--fragment-retries",
+    "3",
+    "-o",
+    "-",
+  ];
 
-    let started = false;
-    const stderrChunks: Buffer[] = [];
+  if (cached.infoJsonPath && fs.existsSync(cached.infoJsonPath)) {
+    args.push("--load-info-json", cached.infoJsonPath);
+  } else {
+    args.push(cached.sourceUrl);
+  }
+
+  const child = spawn("yt-dlp", args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  const stderrChunks: Buffer[] = [];
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderrChunks.push(chunk);
+  });
+
+  response.writeHead(200, {
+    "cache-control": "no-store",
+    "content-disposition": buildContentDisposition(cached.filename),
+    "content-type": inferContentType(cached.filename),
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    let bytesWritten = 0;
 
     child.stdout.on("data", (chunk: Buffer) => {
-      if (!started) {
-        started = true;
-        response.writeHead(200, {
-          "cache-control": "no-store",
-          "content-type": inferContentType(cached.filename),
+      bytesWritten += chunk.length;
+      const ok = response.write(chunk);
+      if (!ok) {
+        child.stdout.pause();
+        response.once("drain", () => {
+          child.stdout.resume();
         });
       }
-
-      response.write(chunk);
     });
 
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
+    child.stdout.on("error", (err) => {
+      child.kill("SIGTERM");
+      reject(err);
+    });
+
+    response.on("error", (err) => {
+      child.kill("SIGTERM");
+      reject(err);
     });
 
     child.on("close", (code) => {
-      if (!started && code !== 0) {
-        writeJson(response, 502, {
-          error: Buffer.concat(stderrChunks).toString("utf8").slice(0, 400),
-        });
-        resolve();
-        return;
+      if (code !== 0) {
+        const errorMsg = Buffer.concat(stderrChunks).toString("utf8").slice(0, 400);
+        console.error(
+          `[local-origin] yt-dlp exited with code ${code} after ${bytesWritten} bytes: ${errorMsg}`,
+        );
+        if (!response.headersSent) {
+          writeJson(response, 502, { error: errorMsg });
+          resolve();
+          return;
+        }
       }
 
       response.end();
@@ -265,6 +327,16 @@ async function streamDownload(response: ServerResponse, cached: CachedDownload):
       child.kill("SIGTERM");
     });
   });
+
+  // Best-effort cleanup of the temp info JSON.
+  if (cached.infoJsonPath) {
+    fs.unlink(cached.infoJsonPath, () => {});
+  }
+}
+
+function buildContentDisposition(filename: string): string {
+  const ascii = filename.replace(/[^\x20-\x7E]/gu, "_");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 function inferContentType(filename: string): string {

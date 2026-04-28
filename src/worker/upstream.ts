@@ -95,7 +95,11 @@ export async function resolveSource(env: Env, sourceUrl: string): Promise<Resolv
 
     const items: DownloadItem[] = [
       {
-        downloadPath: await buildDownloadPath(env, filename, payload.url),
+        downloadPath: await buildDownloadPath(
+          env,
+          filename,
+          toInternalDownloadUrl(env, payload.url),
+        ),
         filename,
         id: crypto.randomUUID(),
         kind,
@@ -128,21 +132,29 @@ export async function resolveSource(env: Env, sourceUrl: string): Promise<Resolv
 
 // ── Download helpers ──
 
+function toInternalDownloadUrl(env: Env, url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.startsWith("/download")) {
+      const base = new URL(env.EXTRACTOR_URL);
+      const basePath = base.pathname.replace(/\/+$/u, "");
+      return `${base.origin}${basePath}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // ignore parse errors, fall back to original URL
+  }
+  return url;
+}
+
 export async function buildUpstreamDownloadRequestInit(
   env: Env,
-  remoteUrl: string,
+  _remoteUrl: string,
 ): Promise<RequestInit> {
-  const remote = new URL(remoteUrl);
-  const upstreamOrigin = new URL(env.EXTRACTOR_URL).origin;
-
-  if (remote.origin === upstreamOrigin) {
-    return {
-      headers: buildUpstreamHeaders(env),
-      redirect: "follow",
-    };
-  }
-
+  // The remoteUrl always comes from our signed download token and should
+  // point to the extractor. Always send auth headers when we have them so
+  // the extractor's /download endpoint never receives an anonymous request.
   return {
+    headers: buildUpstreamHeaders(env),
     redirect: "follow",
   };
 }
