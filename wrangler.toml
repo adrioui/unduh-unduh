@@ -12,6 +12,11 @@ not_found_handling = "single-page-application"
 enabled = true
 
 [vars]
-EXTRACTOR_TIMEOUT_MS = "20000"
-MAX_BATCH_SIZE = "25"
-MAX_UPSTREAM_CONCURRENCY = "3"
+EXTRACTOR_TIMEOUT_MS = "60000"
+MAX_BATCH_SIZE = "10"
+MAX_UPSTREAM_CONCURRENCY = "1"
+
+[[vpc_services]]
+binding = "EXTRACTOR_VPC"
+service_id = "019dd24a-3c3e-7260-854e-0297f46dc5a5"
+remote = true
