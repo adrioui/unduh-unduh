@@ -5,6 +5,7 @@ export interface Env {
   EXTRACTOR_API_KEY?: string;
   EXTRACTOR_URL: string;
   EXTRACTOR_BEARER_TOKEN?: string;
+  EXTRACTOR_VPC?: WorkerFetcher;
   EXTRACTOR_TIMEOUT_MS?: string;
   DOWNLOAD_TOKEN_SECRET: string;
   MAX_BATCH_SIZE?: string;

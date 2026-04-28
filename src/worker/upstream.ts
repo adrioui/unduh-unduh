@@ -33,7 +33,7 @@ export async function fetchUpstreamInfo(env: Env): Promise<{
   services: string[];
   version?: string;
 }> {
-  const upstreamResponse = await fetch(new URL("/", env.EXTRACTOR_URL), {
+  const upstreamResponse = await fetchUpstream(env, new URL("/", env.EXTRACTOR_URL), {
     headers: buildUpstreamHeaders(env),
   });
 
@@ -65,7 +65,7 @@ export async function resolveSource(env: Env, sourceUrl: string): Promise<Resolv
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(new URL("/extract", env.EXTRACTOR_URL), {
+    const response = await fetchUpstream(env, new URL("/extract", env.EXTRACTOR_URL), {
       body: JSON.stringify({ url: sourceUrl }),
       headers: {
         ...buildUpstreamHeaders(env),
@@ -149,6 +149,27 @@ export async function buildUpstreamDownloadRequestInit(
 
 export function hasUpstreamAuth(env: Env): boolean {
   return Boolean(env.EXTRACTOR_API_KEY || env.EXTRACTOR_BEARER_TOKEN);
+}
+
+export function fetchUpstream(
+  env: Env,
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (env.EXTRACTOR_VPC && isConfiguredExtractorUrl(env, input)) {
+    return env.EXTRACTOR_VPC.fetch(input, init);
+  }
+
+  return fetch(input, init);
+}
+
+function isConfiguredExtractorUrl(env: Env, input: RequestInfo | URL): boolean {
+  try {
+    const target = new URL(input instanceof Request ? input.url : input.toString());
+    return target.origin === new URL(env.EXTRACTOR_URL).origin;
+  } catch {
+    return false;
+  }
 }
 
 // ── Internals ──

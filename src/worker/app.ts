@@ -7,7 +7,12 @@ import {
 import { isSupportedSourceUrl, normalizeSourceUrl } from "../shared/sources.ts";
 import { sanitizeFilename } from "../shared/strings.ts";
 import { readIntEnv, requireEnv } from "./env.ts";
-import { buildUpstreamDownloadRequestInit, fetchUpstreamInfo, resolveSource } from "./upstream.ts";
+import {
+  buildUpstreamDownloadRequestInit,
+  fetchUpstream,
+  fetchUpstreamInfo,
+  resolveSource,
+} from "./upstream.ts";
 import type { Env } from "./env.ts";
 import { errorResponse, jsonResponse, methodNotAllowed } from "./http.ts";
 import { buildContentDisposition, readDownloadToken } from "./token.ts";
@@ -144,7 +149,11 @@ async function handleDownload(request: Request, env: Env): Promise<Response> {
     return errorResponse(400, "Refusing to proxy an unsafe upstream URL.");
   }
 
-  const upstream = await fetch(remoteUrl, await buildUpstreamDownloadRequestInit(env, remoteUrl));
+  const upstream = await fetchUpstream(
+    env,
+    remoteUrl,
+    await buildUpstreamDownloadRequestInit(env, remoteUrl),
+  );
 
   if (!upstream.ok || !upstream.body) {
     const excerpt = await upstream.text();
