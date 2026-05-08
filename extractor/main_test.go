@@ -120,6 +120,83 @@ func TestSetDirectRequestHeaders(t *testing.T) {
 	}
 }
 
+func TestDirectHostKey(t *testing.T) {
+	if got := directHostKey("https://v19-webapp-prime.tiktok.com/video.mp4"); got != "tiktok.com" {
+		t.Fatalf("directHostKey(tiktok) = %q, want tiktok.com", got)
+	}
+	if got := directHostKey("https://127.0.0.1:9010/download?id=abc"); got != "127.0.0.1" {
+		t.Fatalf("directHostKey(ip) = %q, want 127.0.0.1", got)
+	}
+	if got := directHostKey("not a url"); got != "" {
+		t.Fatalf("directHostKey(invalid) = %q, want empty", got)
+	}
+}
+
+func TestRecordDirectDownloadFailureDemotesCachedDirectURLs(t *testing.T) {
+	hostCooldown = 10 * time.Minute
+	maxHostCooldowns = 16
+	cacheMu.Lock()
+	cache = map[string]*CachedDownload{
+		"one": {
+			DirectURL:   "https://v19-webapp-prime.tiktok.com/video1.mp4",
+			SourceURL:   "https://www.tiktok.com/@demo/video/123",
+			HTTPHeaders: map[string]string{"User-Agent": "test"},
+		},
+		"two": {
+			DirectURL:   "https://v19-webapp-prime.tiktok.com/video2.mp4",
+			SourceURL:   "https://www.tiktok.com/@demo/video/123",
+			HTTPHeaders: map[string]string{"User-Agent": "test"},
+		},
+	}
+	sourceCache = map[string]*CachedDownload{
+		"https://www.tiktok.com/@demo/video/123": {
+			DirectURL:   "https://v19-webapp-prime.tiktok.com/video3.mp4",
+			SourceURL:   "https://www.tiktok.com/@demo/video/123",
+			HTTPHeaders: map[string]string{"User-Agent": "test"},
+		},
+	}
+	directCooldowns = map[string]int64{}
+	entry := cache["one"]
+	cacheMu.Unlock()
+
+	recordDirectDownloadFailure(entry)
+
+	cacheMu.RLock()
+	defer cacheMu.RUnlock()
+	if cache["one"].DirectURL != "" || cache["one"].HTTPHeaders != nil {
+		t.Fatal("expected first cache entry direct URL and headers to be cleared")
+	}
+	if cache["two"].DirectURL != "" || cache["two"].HTTPHeaders != nil {
+		t.Fatal("expected second cache entry direct URL and headers to be cleared")
+	}
+	source := sourceCache["https://www.tiktok.com/@demo/video/123"]
+	if source.DirectURL != "" || source.HTTPHeaders != nil {
+		t.Fatal("expected source cache direct URL and headers to be cleared")
+	}
+	if until, ok := directCooldowns["tiktok.com"]; !ok || until <= time.Now().Unix() {
+		t.Fatalf("expected tiktok.com cooldown, got %#v", directCooldowns)
+	}
+}
+
+func TestShouldBypassDirectDownloadExpiresCooldown(t *testing.T) {
+	hostCooldown = 10 * time.Second
+	maxHostCooldowns = 16
+	cacheMu.Lock()
+	directCooldowns = map[string]int64{"tiktok.com": time.Now().Unix() - 1}
+	cacheMu.Unlock()
+
+	if shouldBypassDirectDownload("https://v16-webapp.tiktok.com/video.mp4") {
+		t.Fatal("expected expired cooldown to be ignored")
+	}
+
+	cacheMu.RLock()
+	_, stillPresent := directCooldowns["tiktok.com"]
+	cacheMu.RUnlock()
+	if stillPresent {
+		t.Fatal("expected expired cooldown entry to be removed")
+	}
+}
+
 func TestBuildYtDlpBaseArgsAvoidsExpensiveDefaults(t *testing.T) {
 	ytdlpTimeout = 30 * time.Second
 	args := strings.Join(buildYtDlpBaseArgs(), " ")

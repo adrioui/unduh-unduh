@@ -45,7 +45,9 @@ var (
 	ttlSeconds        int
 	concurrency       int
 	maxCacheEntries   int
+	maxHostCooldowns  int
 	busyWait          time.Duration
+	hostCooldown      time.Duration
 	ytdlpTimeout      time.Duration
 	maxYtdlpJSONBytes int64
 	saveInfoJSON      bool
@@ -62,7 +64,9 @@ func loadConfig() {
 	ttlSeconds = envIntAny([]string{"TTL_SECONDS", "DOWNLOAD_TTL_SECONDS"}, 1200)
 	concurrency = max(1, envIntAny([]string{"MAX_CONCURRENCY", "MAX_JOBS"}, 1))
 	maxCacheEntries = max(1, envInt("MAX_CACHE_ENTRIES", 64))
+	maxHostCooldowns = max(1, envInt("MAX_DIRECT_HOST_COOLDOWNS", 128))
 	busyWait = time.Duration(max(0, envInt("BUSY_WAIT_SECONDS", 15))) * time.Second
+	hostCooldown = time.Duration(max(0, envInt("DIRECT_HOST_COOLDOWN_SECONDS", 900))) * time.Second
 	ytdlpTimeout = time.Duration(max(10, envIntAny([]string{"YTDLP_TIMEOUT_SECONDS", "YTDLP_TIMEOUT"}, 90))) * time.Second
 	maxYtdlpJSONBytes = int64(max(256*1024, envInt("MAX_YTDLP_JSON_BYTES", 4*1024*1024)))
 	saveInfoJSON = envBool("SAVE_INFO_JSON", false)
@@ -114,6 +118,7 @@ type ytDlpResult struct {
 var (
 	cache           = make(map[string]*CachedDownload)
 	sourceCache     = make(map[string]*CachedDownload)
+	directCooldowns = make(map[string]int64)
 	cacheMu         sync.RWMutex
 	inflightSources = make(map[string]*inflightExtraction)
 	inflightMu      sync.Mutex
@@ -215,7 +220,12 @@ func handleDownload(w http.ResponseWriter, r *http.Request) {
 
 	// Try direct download first, fallback to yt-dlp streaming.
 	if cached.DirectURL != "" {
+		if shouldBypassDirectDownload(cached.DirectURL) {
+			streamWithYtDlp(w, r, cached)
+			return
+		}
 		if err := streamDirect(w, r, cached); err != nil {
+			recordDirectDownloadFailure(cached)
 			log.Printf("[extractor] direct stream failed: %v, trying yt-dlp", err)
 			streamWithYtDlp(w, r, cached)
 		}
@@ -773,6 +783,104 @@ func sanitizePublicHTTPHeaders(headers map[string]string) map[string]string {
 	return clean
 }
 
+func shouldBypassDirectDownload(rawURL string) bool {
+	if hostCooldown <= 0 {
+		return false
+	}
+	hostKey := directHostKey(rawURL)
+	if hostKey == "" {
+		return false
+	}
+
+	now := time.Now().Unix()
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	expiresAt, ok := directCooldowns[hostKey]
+	if !ok {
+		return false
+	}
+	if expiresAt <= now {
+		delete(directCooldowns, hostKey)
+		return false
+	}
+	return true
+}
+
+func recordDirectDownloadFailure(cached *CachedDownload) {
+	if cached == nil {
+		return
+	}
+
+	now := time.Now().Unix()
+	hostKey := directHostKey(cached.DirectURL)
+
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+
+	if hostCooldown > 0 && hostKey != "" {
+		directCooldowns[hostKey] = now + int64(hostCooldown.Seconds())
+		cleanupDirectCooldownsLocked(now)
+	}
+
+	if cached.SourceURL == "" {
+		return
+	}
+
+	for _, entry := range cache {
+		if entry == nil || entry.SourceURL != cached.SourceURL {
+			continue
+		}
+		entry.DirectURL = ""
+		entry.HTTPHeaders = nil
+	}
+	if sourceEntry, ok := sourceCache[cached.SourceURL]; ok && sourceEntry != nil {
+		sourceEntry.DirectURL = ""
+		sourceEntry.HTTPHeaders = nil
+	}
+}
+
+func cleanupDirectCooldownsLocked(now int64) {
+	for host, expiresAt := range directCooldowns {
+		if expiresAt <= now {
+			delete(directCooldowns, host)
+		}
+	}
+
+	for len(directCooldowns) > maxHostCooldowns {
+		oldestHost := ""
+		oldestUntil := int64(1<<63 - 1)
+		for host, expiresAt := range directCooldowns {
+			if expiresAt < oldestUntil {
+				oldestHost = host
+				oldestUntil = expiresAt
+			}
+		}
+		if oldestHost == "" {
+			break
+		}
+		delete(directCooldowns, oldestHost)
+	}
+}
+
+func directHostKey(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return ""
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return host
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) < 2 {
+		return host
+	}
+	return parts[len(parts)-2] + "." + parts[len(parts)-1]
+}
+
 func inferContentType(filename string) string {
 	lower := strings.ToLower(filename)
 	switch {
@@ -866,6 +974,7 @@ func cleanupCache() {
 			deleteSourceCachedLocked(k, v)
 		}
 	}
+	cleanupDirectCooldownsLocked(now)
 
 	for len(cache) > maxCacheEntries {
 		oldestKey := ""

@@ -22,6 +22,7 @@ The Worker itself never runs `yt-dlp`.
 - Repeated resolve requests are deduplicated in the Worker and served from a short-lived bridge source cache when possible, avoiding extra `yt-dlp` subprocesses on small hosts.
 - The bridge ties fallback downloads to client cancellation, kills timed-out `yt-dlp` process groups, disables transparent gzip decoding for media streams, ignores host-level yt-dlp config, caps metadata JSON size, and asks yt-dlp to skip comments/cache work.
 - Downloads go through the extractor bridge by default so platform CDN requests come from the VPS instead of Cloudflare edge IPs, avoiding common 403 responses. Direct CDN proxying remains available only when `ENABLE_DIRECT_CDN_DOWNLOADS=true` is explicitly set.
+- The extractor now applies a short host-level cooldown after direct-stream 403/timeout failures, so repeated requests skip the failing direct path and fall back to yt-dlp immediately.
 - Worker download failures only read a small error prefix and abort upstream fetches when clients disconnect, avoiding wasted memory and bandwidth.
 
 ## Stack
@@ -115,6 +116,8 @@ Useful extractor tuning knobs for small hosts:
 - `MAX_CONCURRENCY` / `MAX_JOBS` — concurrent `yt-dlp` jobs (default `1`)
 - `BUSY_WAIT_SECONDS` — wait briefly for a free job slot before returning busy (default `15`)
 - `MAX_CACHE_ENTRIES` — cap short-lived download IDs and source-cache entries (default `64`)
+- `DIRECT_HOST_COOLDOWN_SECONDS` — per-host cooldown after direct-stream failures before retrying direct mode (default `900`)
+- `MAX_DIRECT_HOST_COOLDOWNS` — cap tracked direct-host cooldown entries (default `128`)
 - `GO_MEMORY_LIMIT_MB` — soft Go runtime memory cap (default `96`)
 - `YTDLP_TIMEOUT_SECONDS` — extraction timeout (default `90`)
 - `MAX_YTDLP_JSON_BYTES` — cap extraction metadata output to protect tiny hosts from unexpectedly huge responses (default `4194304`)
